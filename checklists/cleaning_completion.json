@@ -1,0 +1,11 @@
+{
+  "job_type": "cleaning",
+  "checks": [
+    "Floor area is visibly clean.",
+    "No visible trash remains on the floor.",
+    "Basin is visibly clean.",
+    "Tap and surrounding basin area are visibly clean.",
+    "Surrounding work area is visibly clean.",
+    "Under-furniture area is inspected."
+  ]
+}
