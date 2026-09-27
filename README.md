@@ -175,6 +175,20 @@ Human-in-the-Loop Review Console (`/reviews`)
 
 ---
 
+
+## 🚀 1-Click Free Deployment (No Credit Card)
+
+You can deploy this entire stack for 100% free without a credit card using Vercel (Frontend) and Koyeb (Backend).
+
+### 1. Deploy the Backend (Koyeb)
+Koyeb provides a free Docker container that will run both our FastAPI backend and Background Worker.
+[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=git&repository=github.com/rajatmurhe/fieldproof-ai&branch=main&builder=docker&env[DATABASE_URL]=&env[GEMINI_API_KEY]=&env[CLERK_SECRET_KEY]=&env[CORS_ALLOWED_ORIGINS]=*)
+
+### 2. Deploy the Frontend (Vercel)
+Vercel is the creator of Next.js and provides free serverless hosting.
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Frajatmurhe%2Ffieldproof-ai&root-directory=frontend)
+
+
 ## Local Development Setup
 
 ### Prerequisites
