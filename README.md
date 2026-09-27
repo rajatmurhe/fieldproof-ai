@@ -653,8 +653,6 @@ NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-**Never commit real credentials to Git.**
-
 ---
 
 # 📸 Product Screenshots
@@ -687,11 +685,6 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ![New Checklist](photos/six.png)
 
----
-
-# 🧠 Engineering Decisions
-
-FieldProof AI intentionally makes several design choices that differ from a simple AI demo.
 
 ### 1. AI output is structured
 
@@ -716,26 +709,6 @@ Organization boundaries are enforced server-side rather than trusting client inp
 ### 6. Audit history is a first-class feature
 
 Every important state transition can be inspected after the fact.
-
----
-
-# ⚠️ Current Limitations
-
-FieldProof AI is currently a working product prototype / portfolio-grade system rather than a fully deployed enterprise platform.
-
-Important production considerations include:
-
-* replacing local video storage with object storage
-* adding production-grade queue orchestration where appropriate
-* scaling worker infrastructure
-* database connection pooling
-* production rate limiting
-* stronger monitoring and alerting
-* CDN / signed media delivery
-* additional model evaluation datasets
-* systematic AI accuracy benchmarking
-
-The current repository also identifies local filesystem storage and production worker/database scaling as areas for future infrastructure changes. 
 
 ---
 
