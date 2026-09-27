@@ -1,0 +1,40 @@
+services:
+  # The unified Backend + Worker service (Free Tier)
+  - type: web
+    name: fieldproof-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerCommand: ./start.sh
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fieldproof-db
+          property: connectionString
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        value: "*" # Update this to your frontend URL later
+
+  # The Next.js Frontend (Free Tier)
+  - type: web
+    name: fieldproof-frontend
+    env: node
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: fieldproof-backend
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+
+databases:
+  # Free PostgreSQL Database (90 days)
+  - name: fieldproof-db
+    plan: free
