@@ -1,225 +1,649 @@
 # 🛡️ FieldProof AI
 
-> **Automated AI Video Quality Assurance for Field-Service Operations**
+> **AI-powered video QA for field-service operations — automatically verify job-completion evidence and escalate uncertainty to humans.**
 
-FieldProof AI is an AI-powered video quality assurance (QA) and compliance platform designed for field-service and home-service operations (cleaning, HVAC, plumbing, general facilities maintenance).
+FieldProof AI is a multi-tenant SaaS platform for **field-service and home-service operations** such as cleaning, HVAC, plumbing, and facilities maintenance.
 
-Technicians record job-completion walkthrough videos. FieldProof AI analyzes the raw video stream against service-specific checklists using **Gemini Agentic Video Understanding**, producing structured evidence determinations with timestamps, confidence scores, and concise rationales.
+Technicians submit job-completion videos. FieldProof AI evaluates the video against a **service-specific checklist** using Gemini's multimodal video understanding capabilities, converts the visual evidence into structured QA findings, and routes uncertain cases to a human reviewer.
 
+The goal is simple:
 
-![Python](https://img.shields.io/badge/Python_3.11-14354C?style=for-the-badge&logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=next.js&logoColor=white)
-![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
-![Tailwind](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
-![Gemini](https://img.shields.io/badge/Google_Gemini-8E75B2?style=for-the-badge&logo=google&logoColor=white)
-
-
-<div align="center">
-  <img src="photos/dashboard.png" alt="FieldProof AI Dashboard" width="100%">
-</div>
-
-## 📸 Platform Walkthrough
-
-<details open>
-<summary><b>1. Operational Analytics & Dashboard</b></summary>
-<br>
-Get real-time insights into verification volume, pipeline status, and human review bottlenecks.
-<img src="photos/one.png" alt="Analytics" width="100%">
-</details>
-
-<details>
-<summary><b>2. Jobs Management</b></summary>
-<br>
-Track all field verifications across your organization with advanced filtering and real-time status updates.
-<img src="photos/two.png" alt="Jobs List" width="100%">
-</details>
-
-<details>
-<summary><b>3. Job Creation & Video Upload</b></summary>
-<br>
-Seamlessly create jobs, select service types, and upload completion videos.
-<img src="photos/three.png" alt="Create Job" width="100%">
-</details>
-
-<details>
-<summary><b>4. AI Analysis & Processing</b></summary>
-<br>
-Videos are processed asynchronously using Gemini 2.0 Flash agentic vision.
-<img src="photos/four.png" alt="Processing" width="100%">
-</details>
-
-<details>
-<summary><b>5. Results & Human-in-the-Loop Review</b></summary>
-<br>
-View findings with exact video timestamps. Click a timestamp to jump directly to the evidence in the video player.
-<img src="photos/five.png" alt="Results and Review" width="100%">
-</details>
-
-<details>
-<summary><b>6. Dynamic Checklists</b></summary>
-<br>
-Configure custom verification criteria tailored to specific service types (Cleaning, HVAC, Plumbing, etc.).
-<img src="photos/six.png" alt="Checklists" width="100%">
-</details>
+**Don't make operations teams watch every video. Make them review only the evidence that matters.**
 
 ---
 
-## The Core Product Principle: `NOT_VISIBLE ≠ FAIL`
+## ✨ Why FieldProof AI?
 
-In real-world field services, video cameras may miss an angle, lighting may be dim, or a technician might move quickly past a corner. 
+Traditional field-service QA often depends on supervisors manually watching technician videos to verify that a job was actually completed correctly.
 
-A naive LLM prompt might hallucinate compliance or falsely fail a job due to missing visual evidence. FieldProof AI enforces a strict three-state determination model:
+That creates three problems:
 
-1. **`PASS`**: Clear, unambiguous visible visual evidence in the video confirms the criteria was met.
-2. **`FAIL`**: Visible visual evidence directly confirms the requirement was violated or left incomplete.
-3. **`NOT_VISIBLE`**: The camera did not capture sufficient evidence to make a definitive determination.
+- High review effort
+- Slow verification turnaround
+- Inconsistent human inspection
 
-**`NOT_VISIBLE` is never converted to `FAIL`.** Instead, any non-pass criterion automatically sets the job status to **`REVIEW`**, surfacing the video and evidence timestamps to human operations reviewers for a final binding decision.
+FieldProof AI introduces an AI-assisted verification pipeline:
+
+```text
+Technician Video
+       ↓
+Job + Service Checklist
+       ↓
+Asynchronous AI Analysis
+       ↓
+Structured Visual Evidence
+       ↓
+PASS / FAIL / NOT_VISIBLE
+       ↓
+Human Review when evidence is insufficient
+       ↓
+Final operational decision + audit trail
+````
+
+The platform is designed around **AI-assisted verification, not blind automation**.
 
 ---
 
-## High-Level Architecture
+# 🎯 Core Product Principle
 
-```
-Field Technician
-      │ (Uploads completion video)
-      ▼
-Next.js App Router (Frontend)
+## `NOT_VISIBLE ≠ FAIL`
+
+This is the central design decision in FieldProof AI.
+
+A video can fail to prove that something happened without proving that it did not happen.
+
+For example:
+
+* the technician may not show a corner of the room
+* the camera may move too quickly
+* lighting may obscure an area
+* an object may remain outside the camera frame
+
+Instead of forcing the AI to guess, FieldProof AI uses three evidence states:
+
+| Status        | Meaning                                                                     |
+| ------------- | --------------------------------------------------------------------------- |
+| `PASS`        | The video contains clear visual evidence that the requirement was satisfied |
+| `FAIL`        | The video contains visible evidence that the requirement was violated       |
+| `NOT_VISIBLE` | The video does not contain enough evidence to make a reliable determination |
+
+`NOT_VISIBLE` is therefore surfaced for **human review** instead of being silently converted into failure. The README's current design documents this same three-state model and the automatic escalation to `REVIEW`. 
+
+This gives the system a practical human-in-the-loop workflow:
+
+```text
+AI is confident
+      ↓
+PASS
       │
-      │ REST API (Bearer Session Token via Clerk)
-      ▼
-FastAPI Application Backend (Python 3.11)
-      │
-      ├─► PostgreSQL 16 (Multi-tenant jobs, checklists, audit logs)
-      └─► Video Storage (`uploads/`)
-            │
-            │ (Enqueues job in `analysis_jobs` table)
-            ▼
-Asynchronous Background Worker (`backend/worker.py`)
-      │
-      │ Atomic claim: `SELECT FOR UPDATE SKIP LOCKED`
-      ▼
-Google Gemini Agentic Video Pipeline (`backend/services/gemini_service.py`)
-      │
-      ├─► Model: Gemini 2.0 Flash (Primary) / Gemini 2.0 Flash-Lite (Fallback)
-      ├─► Agentic video temporal analysis
-      └─► Pydantic-validated JSON Schema Output
-            │
-            │ (Persists JobResult + JobFinding rows)
-            ▼
-PostgreSQL Result Storage ──► Sets Status: `PASS` or `REVIEW`
-            │
-            ▼
-Human-in-the-Loop Review Console (`/reviews`)
-      │
-      ├─► Interactive timestamp video seek
-      └─► Reviewer Decision: `APPROVED` or `REJECTED` + Immutable Audit Trail
+      └──────────────┐
+                     │
+AI sees failure ───→ FAIL ──→ REVIEW
+                     │
+AI cannot determine │
+                     ↓
+               NOT_VISIBLE
+                     ↓
+              Human Review
 ```
 
 ---
 
-## Key Features
+# 🖥️ Product Walkthrough
 
-- **Multi-Tenant SaaS Isolation**: Built from the ground up for B2B multi-tenancy. Organization scoping is strictly enforced server-side. Users from Organization A cannot view, inspect, or review jobs, videos, or checklists belonging to Organization B.
-- **Asynchronous Fire-and-Forget Architecture**: Video analysis (7–8 minutes) runs completely decoupled in background workers. Technicians and operators can submit a job, navigate away, close the browser, and return later. State is fully persistent in PostgreSQL.
-- **Interactive Video Evidence Seeking**: Clicking any finding's evidence timestamp (e.g. `00:45`, `01:12`) automatically seeks the video player to that exact frame, dramatically accelerating human review.
-- **Worker Concurrency & Resilience**:
-  - `WITH FOR UPDATE SKIP LOCKED` prevents race conditions between concurrent worker processes.
-  - Automatic stale job recovery: workers identify abandoned `PROCESSING` jobs (>30m) and safely re-queue them.
-  - Maximum retry thresholding prevents poison-pill jobs from consuming compute indefinitely.
-- **Dynamic Organization Checklists**: Operations managers can configure custom verification criteria per service type (`cleaning`, `hvac`, `plumbing`, `maintenance`), complete with template presets.
-- **Complete Audit Trail**: Every job lifecycle transition (`JOB_CREATED`, `ANALYSIS_QUEUED`, `AI_ANALYSIS_STARTED`, `AI_ANALYSIS_COMPLETED`, `HUMAN_REVIEW`) is recorded in an immutable audit ledger with timestamps, actors, and detailed event payloads.
-- **Operational Analytics Dashboard**: Real-time KPI visibility into total verification volume, human review escalation rates, active pipeline queues, and service type workload distribution.
+## 1. Operations Dashboard
 
----
+The dashboard gives operations teams a high-level view of the QA pipeline.
 
-## Tech Stack
+It surfaces:
 
-### Frontend
-- **Framework**: Next.js 16 (App Router)
-- **Language**: TypeScript 5
-- **Styling**: Tailwind CSS v4
-- **Authentication**: Clerk (`@clerk/nextjs`)
-- **State/Data**: Server-backed REST API with smart polling
+* jobs requiring human review
+* active AI analysis jobs
+* verified/completed jobs
+* total jobs tracked
+* recent service submissions
+* review queue entry points
 
-### Backend
-- **Framework**: FastAPI (Python 3.11)
-- **Database ORM**: SQLAlchemy 2.0
-- **Database Driver**: `psycopg2-binary`
-- **Validation**: Pydantic v2
-- **Auth Verification**: Clerk Backend SDK (`clerk-backend-api`)
-- **Migrations**: Alembic 1.14+
-- **Testing**: Pytest & `pytest-asyncio`
+The dashboard is designed around **operational attention**, not just raw database statistics.
 
-### AI & Media
-- **Model**: Google Gemini 2.0 Flash (`gemini-2.0-flash`), Gemini 2.0 Flash-Lite (`gemini-2.0-flash-lite`)
-- **SDK**: Google GenAI SDK (`google-genai`)
-- **Mode**: Agentic video temporal understanding with Pydantic JSON schema constraints
+![Operations Dashboard](photos/dashboard.png)
 
 ---
 
-## Database Schema Overview
+## 2. Jobs Management
 
-| Table | Purpose | Multi-Tenancy Scope |
-|---|---|---|
-| `organizations` | Tenant identity, name, slug, Clerk Org ID mapping | Top-level tenant |
-| `users` | Synced Clerk users with roles (`ADMIN`, `REVIEWER`) | `organization_id` foreign key |
-| `jobs` | Job records with unique `(organization_id, job_id)` index | Scoped to organization |
-| `analysis_jobs` | Background queue items tracking status, attempts, errors | Scoped to job |
-| `job_results` | Overall AI determination and model metadata | Scoped to job |
-| `job_findings` | Individual checklist criterion findings, confidence, and timestamps | Scoped to job result |
-| `checklists` | Service-type criteria list with unique `(organization_id, job_type)` index | Scoped to organization |
-| `audit_logs` | Immutable event stream for compliance | Scoped to organization & job |
+The Jobs view acts as the operational register for technician submissions.
+
+Operators can:
+
+* search by Job ID, video, or service
+* filter by QA status
+* filter by service type
+* inspect individual jobs
+* see the submitted video associated with each job
+* track the final QA state
+
+This gives teams one place to monitor their complete verification workload.
+
+![Field Service Jobs](photos/one.png)
 
 ---
 
+## 3. Create a QA Job
 
-## 🚀 1-Click Free Deployment (No Credit Card)
+A new QA job captures:
 
-You can deploy this entire stack for 100% free without a credit card using Vercel (Frontend) and Koyeb (Backend).
+* Job identifier
+* Service type
+* associated checklist
+* technician completion video
 
-### 1. Deploy the Backend (Koyeb)
-Koyeb provides a free Docker container that will run both our FastAPI backend and Background Worker.
-[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=git&repository=github.com/rajatmurhe/fieldproof-ai&branch=main&builder=docker&env[DATABASE_URL]=&env[GEMINI_API_KEY]=&env[CLERK_SECRET_KEY]=&env[CORS_ALLOWED_ORIGINS]=*)
+The service type determines which verification criteria will be applied during AI analysis.
 
-### 2. Deploy the Frontend (Vercel)
-Vercel is the creator of Next.js and provides free serverless hosting.
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Frajatmurhe%2Ffieldproof-ai&root-directory=frontend)
+This creates a clean data contract between the **operational job** and the **AI QA pipeline**.
 
+![Create New QA Job](photos/five.png)
 
-## Local Development Setup
+---
 
-### Prerequisites
-- Python 3.11+
-- Node.js 18+ & npm
-- PostgreSQL 14+ running locally (or via Docker)
-- Gemini API Key ([Google AI Studio](https://aistudio.google.com/))
-- Clerk Application ([Clerk Dashboard](https://clerk.com/))
+## 4. Dynamic QA Checklists
 
-### 1. Environment Configuration
+Operations teams can define their own verification criteria instead of hard-coding one universal prompt.
 
-Create `.env` in the repository root:
+The checklist interface supports:
+
+* creating service types
+* adding requirements
+* removing requirements
+* editing criteria
+* template presets
+* domain-specific inspection rules
+
+Examples shown in the product include:
+
+* Cleaning
+* HVAC
+* Maintenance
+* Plumbing
+* Electrical
+
+The screenshot demonstrates a seven-item Cleaning checklist covering requirements such as floor cleanliness, trash removal, basin condition, surrounding areas, under-furniture inspection, and mirror inspection.
+
+![Cleaning Checklist](photos/three.png)
+
+### Why this matters
+
+The AI does not simply answer:
+
+> "Is this video good?"
+
+It answers:
+
+> "Does the video provide evidence for each operational requirement?"
+
+That makes the system much closer to a real QA product than a generic video chatbot.
+
+---
+
+# 🤖 AI Video Analysis
+
+Once a technician video is submitted, FieldProof AI places the analysis request into a persistent PostgreSQL-backed queue.
+
+The analysis pipeline is intentionally asynchronous because multimodal video processing can take several minutes.
+
+```text
+Create Job
+   ↓
+Upload Video
+   ↓
+Create analysis_jobs record
+   ↓
+Queue = QUEUED
+   ↓
+Background Worker claims job
+   ↓
+Gemini Video Analysis
+   ↓
+Structured JSON
+   ↓
+Persist findings
+   ↓
+Job becomes REVIEW or PASS
+```
+
+This means the browser does **not** need to stay open while the AI is processing the video.
+
+The current architecture explicitly separates the FastAPI application from the background worker and stores queue state in PostgreSQL. 
+
+---
+
+# 🧠 Structured AI Output
+
+Each checklist requirement produces a structured finding containing:
+
+```json
+{
+  "check": "Floor area is visibly clean",
+  "status": "FAIL",
+  "confidence": 0.95,
+  "evidence_timestamp": "00:11",
+  "reason": "Visible debris remains on the floor."
+}
+```
+
+The important part is that the model output is transformed into **machine-readable QA data**, rather than being displayed as an unstructured paragraph.
+
+The backend validates the model response through Pydantic before persisting the result.
+
+This enables the frontend to build reliable UI elements such as:
+
+* status badges
+* evidence timestamps
+* confidence indicators
+* explanations
+* review actions
+
+---
+
+# 🔎 Human Review Workflow
+
+AI is used to reduce manual workload — not eliminate human judgment.
+
+When a job requires review, operators can open the Human Review Queue.
+
+The queue shows:
+
+* Job ID
+* service type
+* video evidence
+* submission time
+* review actions
+
+Reviewers can then inspect the video and make the final operational decision.
+
+![Human Review Queue](photos/two.png)
+
+---
+
+# 🎥 Evidence-Based Review
+
+The most useful part of the review workflow is the connection between:
+
+**AI finding → evidence timestamp → video**
+
+Instead of searching through the entire recording manually, the reviewer can use the finding's evidence timestamp to navigate directly to the relevant section of the video.
+
+This turns AI output into an actionable review workflow.
+
+The design goal is:
+
+```text
+AI identifies evidence
+        ↓
+Reviewer sees the claim
+        ↓
+Reviewer jumps to evidence
+        ↓
+Reviewer verifies visually
+        ↓
+Human decision recorded
+```
+
+---
+
+# 📊 Operational Analytics
+
+FieldProof AI also provides a dedicated analytics view for understanding QA workload.
+
+The current interface exposes metrics such as:
+
+* total QA volume
+* completion rate
+* review escalation rate
+* rejection rate
+* quality decision distribution
+* workload by service type
+
+![Operational Analytics](photos/four.png)
+
+This lets an operations manager answer questions like:
+
+* How many jobs are entering QA?
+* How much work is still waiting for human review?
+* How many jobs are being rejected?
+* Which service types generate the most workload?
+* How much of the process is being handled automatically?
+
+---
+
+# 🏗️ Architecture
+
+```text
+                       ┌──────────────────────┐
+                       │   Field Technician   │
+                       │   Completion Video   │
+                       └──────────┬───────────┘
+                                  │
+                                  ▼
+                       ┌──────────────────────┐
+                       │   Next.js Frontend   │
+                       │  React + TypeScript  │
+                       └──────────┬───────────┘
+                                  │
+                           Clerk Session
+                                  │
+                                  ▼
+                       ┌──────────────────────┐
+                       │   FastAPI Backend    │
+                       │       Python         │
+                       └───────┬───────┬──────┘
+                               │       │
+                         PostgreSQL     │
+                               │       │
+                               ▼       ▼
+                       ┌────────────┐  ┌──────────────┐
+                       │   Jobs /   │  │ Video Storage│
+                       │ Checklists │  │   uploads/   │
+                       │ Audit Logs │  └──────┬───────┘
+                       └─────┬──────┘         │
+                             │                 │
+                             ▼                 │
+                    ┌───────────────────┐      │
+                    │   analysis_jobs   │◄─────┘
+                    │ PostgreSQL Queue  │
+                    └─────────┬─────────┘
+                              │
+                              ▼
+                    ┌───────────────────┐
+                    │ Background Worker │
+                    │ backend/worker.py │
+                    └─────────┬─────────┘
+                              │
+                              ▼
+                  ┌─────────────────────────┐
+                  │ Gemini Video Analysis   │
+                  │ Agentic Video Pipeline  │
+                  └───────────┬─────────────┘
+                              │
+                              ▼
+                  ┌─────────────────────────┐
+                  │ Structured QA Result    │
+                  │ Pydantic Validation     │
+                  └───────────┬─────────────┘
+                              │
+                              ▼
+                  ┌─────────────────────────┐
+                  │ JobResult + Findings    │
+                  │ PostgreSQL               │
+                  └───────────┬─────────────┘
+                              │
+                              ▼
+                  ┌─────────────────────────┐
+                  │ Human Review Console    │
+                  │ Evidence + Decision     │
+                  └───────────┬─────────────┘
+                              │
+                              ▼
+                  ┌─────────────────────────┐
+                  │ Audit Trail              │
+                  │ Reviewer + Timestamp    │
+                  └─────────────────────────┘
+```
+
+The current repository implements this separation using FastAPI, PostgreSQL, an `analysis_jobs` queue, a dedicated worker, and a Gemini service. 
+
+---
+
+# ⚙️ Async Worker Architecture
+
+The analysis queue is backed by PostgreSQL rather than relying on browser-side execution.
+
+Each analysis job tracks information such as:
+
+* queue state
+* attempts
+* start time
+* completion time
+* error state
+
+Workers claim jobs using row-level locking with:
+
+```sql
+SELECT ... FOR UPDATE SKIP LOCKED
+```
+
+This allows multiple worker processes to operate without simultaneously claiming the same job.
+
+The current architecture also documents stale-job recovery and maximum retry handling. 
+
+---
+
+# 🏢 Multi-Tenant SaaS Design
+
+FieldProof AI is designed as a multi-tenant B2B application.
+
+Each organization owns its own:
+
+* jobs
+* videos
+* checklists
+* results
+* findings
+* audit history
+
+Authorization is enforced on the backend using Clerk organization membership and organization-scoped database queries.
+
+A user's organization is not simply trusted from a frontend request.
+
+This is important because a real SaaS system must protect the tenant boundary at the API and database layers.
+
+The repository currently documents organization-scoped jobs and checklists plus server-side tenant isolation. 
+
+---
+
+# 🧾 Audit Trail
+
+AI decisions and operational actions should be traceable.
+
+FieldProof AI records lifecycle events such as:
+
+```text
+JOB_CREATED
+ANALYSIS_QUEUED
+AI_ANALYSIS_STARTED
+AI_ANALYSIS_COMPLETED
+AI_ANALYSIS_FAILED
+HUMAN_REVIEW
+APPROVED
+REJECTED
+```
+
+The goal is to answer:
+
+> Who did what, when, and what was the previous state?
+
+This becomes especially important when AI is involved in operational QA.
+
+---
+
+# 🗄️ Database Model
+
+The current schema contains the following major tables:
+
+| Table           | Purpose                                        |
+| --------------- | ---------------------------------------------- |
+| `organizations` | Tenant identity and Clerk organization mapping |
+| `users`         | Application users and organization membership  |
+| `jobs`          | Service QA jobs                                |
+| `analysis_jobs` | Persistent background analysis queue           |
+| `job_results`   | Overall AI result and model metadata           |
+| `job_findings`  | Checklist-level AI findings                    |
+| `checklists`    | Organization-specific service criteria         |
+| `audit_logs`    | Lifecycle and review history                   |
+
+This data model separates the **operational job**, **AI processing state**, **AI result**, and **human decision history** rather than placing everything into one record. 
+
+---
+
+# 🧰 Tech Stack
+
+## Frontend
+
+* Next.js 16
+* React 19
+* TypeScript
+* Tailwind CSS
+* Clerk Authentication
+* REST API
+* Server-backed polling / status refresh
+
+## Backend
+
+* Python 3.11
+* FastAPI
+* SQLAlchemy 2
+* Pydantic v2
+* PostgreSQL 16
+* Alembic
+* Pytest
+
+## AI / Media
+
+* Google Gemini multimodal video understanding
+* Google GenAI SDK
+* Structured JSON output
+* Pydantic schema validation
+
+The repository currently documents this frontend/backend/AI stack and its PostgreSQL-backed architecture. 
+
+---
+
+# 🔐 Security & Reliability
+
+The system is designed with several operational safeguards:
+
+### Tenant isolation
+
+All business objects are scoped to the authenticated organization.
+
+### Secure video access
+
+Video retrieval is authenticated instead of exposing the upload directory directly.
+
+### File validation
+
+Uploaded media is validated before entering the AI pipeline.
+
+### Idempotent jobs
+
+Job IDs are unique within an organization, preventing accidental duplicate operational records.
+
+### Async processing
+
+Long AI operations are decoupled from the request/response cycle.
+
+### Retry handling
+
+Transient AI failures can be retried without losing the job state.
+
+### Auditability
+
+Important state changes are persisted as audit events.
+
+---
+
+# 🧪 Testing
+
+The repository includes automated tests around:
+
+* multi-tenant isolation
+* API validation
+* job lifecycle
+* checklist management
+* worker concurrency
+* stale-job recovery
+* retry behavior
+* upload validation
+* cross-tenant video access
+
+Run:
+
+```bash
+source .venv/bin/activate
+pytest backend/tests -v
+```
+
+The test suite currently includes dedicated coverage for multi-tenancy, jobs, checklists, worker resilience, and upload validation. 
+
+---
+
+# 🚀 Running Locally
+
+## Prerequisites
+
+* Python 3.11+
+* Node.js
+* PostgreSQL
+* Gemini API credentials
+* Clerk application credentials
+
+## Backend
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+alembic upgrade head
+
+uvicorn backend.main:app --reload --port 8000
+```
+
+## Worker
+
+In another terminal:
+
+```bash
+cd ~/fieldproof-ai
+source .venv/bin/activate
+
+python -m backend.worker
+```
+
+## Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Then open:
+
+```text
+http://localhost:3000
+```
+
+The repository's current setup also documents separate backend, worker, and frontend processes. 
+
+---
+
+# 🔑 Environment Variables
+
+Backend:
+
 ```env
-# Gemini API Key
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# Clerk Backend Authentication
-CLERK_SECRET_KEY=sk_test_...
+GEMINI_API_KEY=your_key
+CLERK_SECRET_KEY=your_key
 CLERK_AUTHORIZED_PARTIES=http://localhost:3000
-
-# PostgreSQL Connection String
-DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/fieldproof
-
-# CORS Allowed Origins
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+DATABASE_URL=postgresql+psycopg2://...
+CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```
 
-Create `frontend/.env.local`:
+Frontend:
+
 ```env
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
-CLERK_SECRET_KEY=sk_test_...
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_key
 
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
@@ -229,79 +653,270 @@ NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-### 2. Backend Setup
-
-```bash
-# Create and activate virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run database migrations
-alembic upgrade head
-
-# Start FastAPI server
-uvicorn backend.main:app --reload --port 8000
-```
-
-### 3. Background Worker Setup
-
-In a separate terminal window:
-```bash
-source .venv/bin/activate
-
-# Start the analysis queue worker
-python -m backend.worker
-```
-
-### 4. Frontend Setup
-
-In a separate terminal window:
-```bash
-cd frontend
-
-# Install npm packages
-npm install
-
-# Start development server
-npm run dev
-```
-
-The application is now live at [http://localhost:3000](http://localhost:3000).
+**Never commit real credentials to Git.**
 
 ---
 
-## Running the Automated Test Suite
+# 📸 Product Screenshots
 
-FieldProof AI includes an automated test suite covering multi-tenancy isolation, API validation, worker resilience, and upload security:
+### Operations Dashboard
 
-```bash
-source .venv/bin/activate
+![Dashboard](photos/dashboard.png)
 
-# Run all tests
-pytest backend/tests -v
-```
+### Jobs Management
 
-Test coverage includes:
-- **`test_multi_tenancy.py`**: Strict cross-tenant boundaries, cross-org job ID deduplication, and unauthorized review prevention.
-- **`test_jobs_api.py`**: Idempotent creation, input validation, status aggregation, review lifecycle.
-- **`test_checklists_api.py`**: Template auto-seeding, custom checklist CRUD, slug validation.
-- **`test_worker_resilience.py`**: Atomic concurrent claiming, stale processing recovery, and max attempt caps.
-- **`test_upload_validation.py`**: Path traversal blocking, file extension enforcement, and cross-tenant video streaming prevention.
+![Jobs](photos/one.png)
+
+### Human Review Queue
+
+![Review Queue](photos/two.png)
+
+### Dynamic Checklists
+
+![Checklist](photos/three.png)
+
+### Operational Analytics
+
+![Analytics](photos/four.png)
+
+### Create QA Job
+
+![Create Job](photos/five.png)
+
+### New Checklist
+
+![New Checklist](photos/six.png)
 
 ---
 
-## Production Deployment Considerations
+# 🧠 Engineering Decisions
 
-1. **Object Storage**: For cloud deployment (AWS/GCP), replace local disk storage (`uploads/`) with Amazon S3 or Google Cloud Storage using presigned upload URLs.
-2. **Worker Scaling**: The worker is designed for horizontal scaling. Multiple worker containers can run simultaneously on ECS, Cloud Run, or Kubernetes, safely claiming jobs via `SKIP LOCKED`.
-3. **Database Connection Pooling**: In production with multiple worker replicas, use PgBouncer or Supabase connection pooling to manage PostgreSQL connections.
-4. **Rate Limits & Quota**: Gemini 2.0 Flash supports high throughput; the service includes automatic fallback to `gemini-2.0-flash-lite` and exponential backoff for 503 transient errors.
+FieldProof AI intentionally makes several design choices that differ from a simple AI demo.
+
+### 1. AI output is structured
+
+The application consumes schema-validated findings instead of free-form model responses.
+
+### 2. Missing evidence is treated as uncertainty
+
+The system distinguishes lack of evidence from evidence of failure.
+
+### 3. AI execution is asynchronous
+
+Long-running video analysis is handled by a persistent worker rather than blocking the frontend request.
+
+### 4. Human review remains authoritative
+
+AI assists the QA process; reviewers can make the final operational decision.
+
+### 5. Tenant isolation is a backend responsibility
+
+Organization boundaries are enforced server-side rather than trusting client input.
+
+### 6. Audit history is a first-class feature
+
+Every important state transition can be inspected after the fact.
+
+---
+
+# ⚠️ Current Limitations
+
+FieldProof AI is currently a working product prototype / portfolio-grade system rather than a fully deployed enterprise platform.
+
+Important production considerations include:
+
+* replacing local video storage with object storage
+* adding production-grade queue orchestration where appropriate
+* scaling worker infrastructure
+* database connection pooling
+* production rate limiting
+* stronger monitoring and alerting
+* CDN / signed media delivery
+* additional model evaluation datasets
+* systematic AI accuracy benchmarking
+
+The current repository also identifies local filesystem storage and production worker/database scaling as areas for future infrastructure changes. 
+
+---
+
+# 🌍 Where This Could Be Used
+
+FieldProof AI's architecture can be adapted to many visual verification workflows:
+
+* cleaning services
+* HVAC maintenance
+* plumbing
+* electrical work
+* property inspections
+* facilities maintenance
+* construction progress checks
+* equipment servicing
+* rental-property turnover inspections
+
+The checklist layer allows the verification logic to change without rebuilding the entire AI system.
+
+---
+
+# 🎓 What This Project Demonstrates
+
+FieldProof AI combines several engineering domains in one system:
+
+**Artificial Intelligence**
+
+* multimodal video understanding
+* structured LLM output
+* uncertainty handling
+* evidence extraction
+
+**Backend Engineering**
+
+* FastAPI
+* PostgreSQL
+* SQLAlchemy
+* asynchronous job processing
+* transactional state management
+
+**Frontend Engineering**
+
+* Next.js
+* TypeScript
+* responsive operational UI
+* authenticated API integration
+
+**SaaS Architecture**
+
+* organization isolation
+* role-aware workflows
+* persistent state
+* auditability
+
+**Production Thinking**
+
+* retry handling
+* queue resilience
+* validation
+* security boundaries
+* human-in-the-loop decision systems
+
+---
+
+# 📁 Repository Structure
+
+```text
+fieldproof-ai/
+│
+├── backend/
+│   ├── api_*.py
+│   ├── auth.py
+│   ├── worker.py
+│   ├── database/
+│   ├── models/
+│   ├── services/
+│   └── tests/
+│
+├── frontend/
+│   └── src/
+│       ├── app/
+│       ├── components/
+│       └── lib/
+│
+├── photos/
+│   ├── dashboard.png
+│   ├── one.png
+│   ├── two.png
+│   ├── three.png
+│   ├── four.png
+│   ├── five.png
+│   └── six.png
+│
+├── uploads/
+├── alembic/
+├── requirements.txt
+└── README.md
+```
+
+---
+
+# 🔬 Example QA Result
+
+A typical AI response is conceptually represented as:
+
+```text
+Job: JOB-1061
+Service: Cleaning
+
+1. Floor area is visibly clean
+   FAIL
+   Confidence: 95%
+   Evidence: 00:11
+   Reason: Visible debris remains on the floor.
+
+2. No visible trash remains on the floor
+   FAIL
+   Confidence: 98%
+   Evidence: 00:11
+   Reason: Newspaper remains visible.
+
+3. Basin is visibly clean
+   PASS
+   Confidence: 95%
+   Evidence: 00:26
+
+4. Tap and surrounding basin area are visibly clean
+   FAIL
+   Confidence: 95%
+   Evidence: 00:25
+
+5. Surrounding work area is visibly clean
+   FAIL
+   Confidence: 90%
+   Evidence: 00:30
+
+6. Under-furniture area is inspected
+   NOT_VISIBLE
+   Confidence: 90%
+
+7. Mirror is clean
+   NOT_VISIBLE
+   Confidence: 95%
+
+Overall:
+REVIEW
+```
+
+The important insight is that the system does not collapse all uncertainty into a binary answer.
+
+---
+
+# 🏁 Final Takeaway
+
+FieldProof AI is built around a simple operational question:
+
+> **Can we use AI to verify field work from video without forcing operations teams to manually watch every recording?**
+
+The platform combines:
+
+**video understanding + structured evidence + asynchronous processing + human review + multi-tenant SaaS architecture**
+
+into one end-to-end workflow.
+
+That makes FieldProof AI more than a model demo — it is an example of how a multimodal AI capability can be turned into an operational product.
 
 ---
 
 ## License
 
 Proprietary — Developed for Field-Service Quality Assurance Operations.
+
+```
+
+### One thing I would change before committing this
+
+Your screenshots make the product look considerably stronger than the current README. The visual story is coherent: dashboard → jobs → review → checklist → analytics → job submission. The current README already has a six-section walkthrough, but this rewrite makes each screenshot explain **what the user accomplishes and why that screen exists**, rather than merely displaying the image. :contentReference[oaicite:14]{index=14}
+
+Also, there is a discrepancy worth fixing: the current README says **Gemini 2.0 Flash / Flash-Lite**, while the working project state we established earlier used a newer primary model. I would have Antigravity verify the exact model names from the current `gemini_service.py` and then make the README match the code rather than hard-code a stale version. The current GitHub copy does explicitly advertise Gemini 2.0. :contentReference[oaicite:15]{index=15}
+
+And one visual/detail issue: the uploaded screenshots show the sidebar label **“Gemini 2.0 Agentic QA”**, so that should also be reconciled with whatever model the code actually uses rather than leaving inconsistent branding across the UI and README.
+
+I would give Antigravity the README rewrite above and tell it to **verify every technical claim against the repository before committing**, especially model versions, deployment, migrations, worker behavior, and test coverage.
+```
