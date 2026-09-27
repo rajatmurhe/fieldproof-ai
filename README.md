@@ -1,8 +1,68 @@
-# FieldProof AI — Video QA & Verification Platform for Field Services
+# 🛡️ FieldProof AI
+
+> **Automated AI Video Quality Assurance for Field-Service Operations**
 
 FieldProof AI is an AI-powered video quality assurance (QA) and compliance platform designed for field-service and home-service operations (cleaning, HVAC, plumbing, general facilities maintenance).
 
 Technicians record job-completion walkthrough videos. FieldProof AI analyzes the raw video stream against service-specific checklists using **Gemini Agentic Video Understanding**, producing structured evidence determinations with timestamps, confidence scores, and concise rationales.
+
+
+![Python](https://img.shields.io/badge/Python_3.11-14354C?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=next.js&logoColor=white)
+![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
+![Gemini](https://img.shields.io/badge/Google_Gemini-8E75B2?style=for-the-badge&logo=google&logoColor=white)
+
+
+<div align="center">
+  <img src="photos/dashboard.png" alt="FieldProof AI Dashboard" width="100%">
+</div>
+
+## 📸 Platform Walkthrough
+
+<details open>
+<summary><b>1. Operational Analytics & Dashboard</b></summary>
+<br>
+Get real-time insights into verification volume, pipeline status, and human review bottlenecks.
+<img src="photos/one.png" alt="Analytics" width="100%">
+</details>
+
+<details>
+<summary><b>2. Jobs Management</b></summary>
+<br>
+Track all field verifications across your organization with advanced filtering and real-time status updates.
+<img src="photos/two.png" alt="Jobs List" width="100%">
+</details>
+
+<details>
+<summary><b>3. Job Creation & Video Upload</b></summary>
+<br>
+Seamlessly create jobs, select service types, and upload completion videos.
+<img src="photos/three.png" alt="Create Job" width="100%">
+</details>
+
+<details>
+<summary><b>4. AI Analysis & Processing</b></summary>
+<br>
+Videos are processed asynchronously using Gemini 2.0 Flash agentic vision.
+<img src="photos/four.png" alt="Processing" width="100%">
+</details>
+
+<details>
+<summary><b>5. Results & Human-in-the-Loop Review</b></summary>
+<br>
+View findings with exact video timestamps. Click a timestamp to jump directly to the evidence in the video player.
+<img src="photos/five.png" alt="Results and Review" width="100%">
+</details>
+
+<details>
+<summary><b>6. Dynamic Checklists</b></summary>
+<br>
+Configure custom verification criteria tailored to specific service types (Cleaning, HVAC, Plumbing, etc.).
+<img src="photos/six.png" alt="Checklists" width="100%">
+</details>
 
 ---
 
