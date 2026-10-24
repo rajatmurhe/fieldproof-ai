@@ -1,0 +1,47 @@
+FieldProof AI, with BharatCode
+==============================
+
+Project:  FieldProof AI
+Repo:     https://github.com/rajatmurhe/fieldproof-ai
+Track:    Work & automation
+Built by: Rajat Murhe (github.com/rajatmurhe)
+
+
+What it is
+----------
+FieldProof AI automates quality checks for field service work. Field service
+companies collect many job videos from technicians, but supervisors cannot
+watch them all, so missed steps slip through.
+
+FieldProof AI checks each technician job video against a configurable
+checklist and returns a PASS, FAIL or NOT_VISIBLE result for every step,
+with a confidence score, a short explanation and the timestamp where the
+evidence appears. Supervisors review only what needs attention, approve or
+correct it, and every decision is saved in an audit trail.
+
+
+How it works
+------------
+* Multi tenant: each organisation's data is kept separate (Clerk).
+* Videos are processed in a PostgreSQL job queue (SELECT FOR UPDATE SKIP
+  LOCKED) with retries and stale job recovery, so processing keeps running
+  without the frontend open.
+* Human in the loop review with a full audit trail of each job.
+
+Stack: Python, FastAPI, Next.js, TypeScript, PostgreSQL, SQLAlchemy, Clerk.
+
+
+How it works with BharatCode
+----------------------------
+Integration in progress. The BharatCode model API is being added to:
+* turn a supervisor's plain English instructions into a structured checklist
+* write the final job report and reviewer summary from the video findings
+
+Video understanding currently runs on Gemini. This section will be updated
+with the exact models and setup steps once the BharatCode integration ships.
+
+
+Notes
+-----
+No secrets, tokens or private data are stored in this repo. API keys are
+read from environment variables.
