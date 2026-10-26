@@ -362,12 +362,19 @@ def process_job(queue_job_id: int) -> None:
 
         started = datetime.utcnow()
 
+        # Freeze the checklist now; the result records what was actually asked.
+        checklist_snapshot = list(checklist.checks)
+
         with get_storage().local_path(job.storage_key) as video_path:
-            result, active_model = analyze_video(
+            analysis = analyze_video(
                 str(video_path),
                 job.job_type,
-                checklist.checks,
+                checklist_snapshot,
             )
+
+        result = analysis.result
+        active_model = analysis.model_name
+        guardrail_events = [event.to_dict() for event in analysis.guardrail_events]
 
         duration_seconds = int(
             (datetime.utcnow() - started).total_seconds()
@@ -388,6 +395,9 @@ def process_job(queue_job_id: int) -> None:
             job_id=job.id,
             overall_status=result.overall_status,
             model_name=active_model,
+            checklist_snapshot=checklist_snapshot,
+            prompt_version=analysis.prompt_version,
+            guardrail_events=guardrail_events,
         )
 
         db.add(job_result)
@@ -427,6 +437,8 @@ def process_job(queue_job_id: int) -> None:
                 "model": active_model,
                 "overall_status": result.overall_status,
                 "finding_count": finding_count,
+                "prompt_version": analysis.prompt_version,
+                "guardrails_fired": len(guardrail_events),
                 "worker_attempt": queue_job.attempts,
                 "duration_seconds": duration_seconds,
             },

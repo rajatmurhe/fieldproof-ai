@@ -15,7 +15,8 @@ from backend.models.analysis_job import AnalysisJob
 from backend.models.audit_log import AuditLog
 from backend.models.checklist import Checklist
 from backend.models.job import Job
-from backend.services.gemini_service import CheckResult, QAResult, VideoRejectedError
+from backend.models.job_result import JobResult
+from backend.services.gemini_service import Analysis, CheckResult, QAResult, VideoRejectedError
 from backend.services.storage import LocalStorage
 from backend.tests.conftest import TestingSessionLocal
 from backend.worker import MAX_ATTEMPTS, claim_one_job, process_job
@@ -146,12 +147,18 @@ def test_recovers_after_transient_error(queued_job):
         overall_status="PASS",
         checks=[CheckResult(check="Floor is clean.", status="PASS", confidence=0.9, reason="Clean.")],
     )
-    _run_once(lambda *args: (result, "test-model"))
+    _run_once(lambda *args: Analysis(result=result, model_name="test-model"))
 
-    job, queue_job, _ = _state(job_pk, queue_pk)
+    job, queue_job, session = _state(job_pk, queue_pk)
     assert queue_job.status == "COMPLETED"
     assert job.status == "PASS"
     assert queue_job.attempts == 2
+
+    # The result records exactly what the model was asked.
+    stored = session.query(JobResult).filter(JobResult.job_id == job_pk).one()
+    assert stored.checklist_snapshot == ["Floor is clean."]
+    assert stored.prompt_version
+    assert stored.guardrail_events == []
 
 
 @pytest.mark.parametrize(

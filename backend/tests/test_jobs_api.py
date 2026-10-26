@@ -106,3 +106,47 @@ def test_health_endpoints(client_a):
     res_health = client_a.get("/health")
     assert res_health.status_code == 200
     assert res_health.json()["status"] == "healthy"
+
+
+def test_guardrail_counts_and_snapshots_stay_in_their_org(client_a, db_session, seed_tenants):
+    """Stats count guardrail events per org; job detail returns the snapshot."""
+    org_a, org_b = seed_tenants["org_a"].id, seed_tenants["org_b"].id
+
+    ja = Job(job_id="G-A", organization_id=org_a, job_type="cleaning", video_filename="a.mp4", status="REVIEW")
+    jb = Job(job_id="G-B", organization_id=org_b, job_type="cleaning", video_filename="b.mp4", status="REVIEW")
+    legacy = Job(job_id="G-OLD", organization_id=org_a, job_type="cleaning", video_filename="o.mp4", status="PASS")
+    db_session.add_all([ja, jb, legacy])
+    db_session.flush()
+    db_session.add(JobResult(job_id=legacy.id, overall_status="PASS"))
+    db_session.add_all([
+        JobResult(
+            job_id=ja.id,
+            overall_status="REVIEW",
+            model_name="test-model",
+            checklist_snapshot=["Floor is clean."],
+            prompt_version="qa-v2",
+            guardrail_events=[
+                {"type": "low_confidence", "detail": "x", "check_order": 1},
+                {"type": "overall_status_overridden", "detail": "y", "check_order": None},
+            ],
+        ),
+        JobResult(
+            job_id=jb.id,
+            overall_status="REVIEW",
+            prompt_version="qa-v2",
+            guardrail_events=[{"type": "schema_fallback", "detail": "z", "check_order": None}],
+        ),
+    ])
+    db_session.commit()
+
+    stats = client_a.get("/jobs/stats").json()
+    assert stats["guardrails"].get("low_confidence") == 1
+    assert stats["guardrails"].get("overall_status_overridden") == 1
+    assert "schema_fallback" not in stats["guardrails"]  # org B's event
+    assert stats["guarded_results"] == 1
+    assert stats["analyzed_results"] == 1  # results from before guardrails aren't counted
+
+    result = client_a.get("/jobs/G-A").json()["result"]
+    assert result["prompt_version"] == "qa-v2"
+    assert result["checklist_snapshot"] == ["Floor is clean."]
+    assert [e["type"] for e in result["guardrail_events"]] == ["low_confidence", "overall_status_overridden"]

@@ -11,6 +11,7 @@ from backend.database.connection import get_db
 from backend.models.analysis_job import AnalysisJob
 from backend.models.audit_log import AuditLog
 from backend.models.job import Job
+from backend.models.job_result import JobResult
 from backend.models.user import User
 
 logger = logging.getLogger("fieldproof.api.jobs")
@@ -80,6 +81,28 @@ def get_stats(
         counts[status] = count
         total += count
 
+    # How often each guardrail fired across this organisation's results.
+    # Results from before guardrails existed have no prompt_version and are skipped.
+    guardrail_rows = (
+        db.query(JobResult.guardrail_events)
+        .join(Job, Job.id == JobResult.job_id)
+        .filter(
+            Job.organization_id == org_id,
+            JobResult.prompt_version.isnot(None),
+        )
+        .all()
+    )
+
+    guardrails: dict[str, int] = {}
+    guarded_results = 0
+    analyzed_results = len(guardrail_rows)
+
+    for (events,) in guardrail_rows:
+        if events:
+            guarded_results += 1
+        for event in events or []:
+            guardrails[event["type"]] = guardrails.get(event["type"], 0) + 1
+
     return {
         "total": total,
         "pending": counts.get("PENDING", 0),
@@ -90,6 +113,9 @@ def get_stats(
         "approved": counts.get("APPROVED", 0),
         "rejected": counts.get("REJECTED", 0),
         "failed": counts.get("FAILED", 0),
+        "guardrails": guardrails,
+        "guarded_results": guarded_results,
+        "analyzed_results": analyzed_results,
     }
 
 
@@ -211,6 +237,9 @@ def get_job(
         result = {
             "overall_status": job.result_record.overall_status,
             "model_name": job.result_record.model_name,
+            "prompt_version": job.result_record.prompt_version,
+            "checklist_snapshot": job.result_record.checklist_snapshot,
+            "guardrail_events": job.result_record.guardrail_events or [],
             "analyzed_at": (
                 job.result_record.created_at.isoformat()
                 if job.result_record.created_at

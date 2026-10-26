@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from backend.database.connection import Base
@@ -30,6 +30,24 @@ class JobResult(Base):
 
     model_name = Column(
         String(100),
+        nullable=True,
+    )
+
+    # What the model was asked, frozen at analysis time: editing a checklist
+    # later must not change what an existing result means.
+    checklist_snapshot = Column(
+        JSON,
+        nullable=True,
+    )
+
+    prompt_version = Column(
+        String(50),
+        nullable=True,
+    )
+
+    # Guardrail rules that fired on this result (see services/guardrails.py).
+    guardrail_events = Column(
+        JSON,
         nullable=True,
     )
 
