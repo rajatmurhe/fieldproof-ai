@@ -5,13 +5,16 @@ Accepts authenticated video uploads for existing jobs.
 
 Security:
   - Organization scoping: only jobs belonging to the current org accepted
-  - Filename sanitization: Path(filename).name strips any directory component
+  - Server-generated storage keys: the client filename is display-only and
+    never decides where the file is written (see services/storage.py)
   - Extension allowlist: only video formats accepted
   - File size limit: MAX_FILE_SIZE_MB enforced
   - Filename match: uploaded file must match the job's registered filename
 """
 
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 from fastapi import (
@@ -29,13 +32,11 @@ from backend.auth import get_current_user
 from backend.database.connection import get_db
 from backend.models.job import Job
 from backend.models.user import User
+from backend.services.storage import build_storage_key, get_storage
 
 logger = logging.getLogger("fieldproof.api.upload")
 
 router = APIRouter(prefix="/upload", tags=["Upload"])
-
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
 
@@ -98,13 +99,20 @@ async def upload_video(
             ),
         )
 
-    destination = UPLOAD_DIR / safe_filename
+    if job.status in {"QUEUED", "ANALYZING"}:
+        raise HTTPException(
+            status_code=409,
+            detail="This job is being analyzed. Wait for it to finish before replacing the video.",
+        )
+
+    handle, temp_name = tempfile.mkstemp(suffix=extension)
+    temp_path = Path(temp_name)
 
     bytes_written = 0
     chunk_size = 1024 * 1024  # 1 MB chunks
 
     try:
-        with destination.open("wb") as buffer:
+        with os.fdopen(handle, "wb") as buffer:
             while True:
                 chunk = await file.read(chunk_size)
                 if not chunk:
@@ -113,8 +121,6 @@ async def upload_video(
                 bytes_written += len(chunk)
 
                 if bytes_written > MAX_FILE_SIZE_BYTES:
-                    # Remove partially-written file
-                    destination.unlink(missing_ok=True)
                     raise HTTPException(
                         status_code=413,
                         detail=(
@@ -125,15 +131,35 @@ async def upload_video(
 
                 buffer.write(chunk)
 
+        storage = get_storage()
+        storage_key = build_storage_key(
+            current_user.organization_id,
+            job.id,
+            extension,
+        )
+        storage.put_file(storage_key, temp_path)
+
     except HTTPException:
+        temp_path.unlink(missing_ok=True)
         raise
     except Exception as exc:
-        destination.unlink(missing_ok=True)
+        temp_path.unlink(missing_ok=True)
         logger.exception("Upload failed for job %s: %s", job_id, exc)
         raise HTTPException(
             status_code=500,
             detail="File upload failed due to a server error.",
         ) from exc
+
+    previous_key = job.storage_key
+    job.storage_key = storage_key
+    db.commit()
+
+    # Replace semantics: a re-upload supersedes the previous video.
+    if previous_key and previous_key != storage_key:
+        try:
+            storage.delete(previous_key)
+        except Exception:
+            logger.warning("Could not delete superseded video %s", previous_key)
 
     size_mb = bytes_written / (1024 * 1024)
 
@@ -147,7 +173,7 @@ async def upload_video(
     )
 
     return {
-        "filename": destination.name,
+        "filename": safe_filename,
         "size_bytes": bytes_written,
         "size_mb": round(size_mb, 2),
         "status": "uploaded",

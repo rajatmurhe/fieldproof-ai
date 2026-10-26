@@ -42,34 +42,30 @@ def test_upload_filename_mismatch_rejected(client_a):
     assert "does not match" in res.json()["detail"]
 
 
-def test_video_endpoint_path_traversal_blocked(client_a):
-    """Path traversal attacks on /videos/{filename} are rejected."""
-    # Attempting to escape the uploads directory
-    traversal_filenames = [
-        "../secrets.txt",
-        "..%2F..%2Fetc%2Fpasswd",
-        "nested/sub/video.mp4",
-    ]
+def test_storage_rejects_keys_that_escape_upload_root(isolated_storage):
+    """Storage keys can never resolve outside the upload directory."""
+    from backend.services.storage import LocalStorage
 
-    for bad_name in traversal_filenames:
-        res = client_a.get(f"/videos/{bad_name}")
-        assert res.status_code in (400, 404)
+    storage = LocalStorage(isolated_storage)
+
+    for bad_key in ["../secrets.txt", "1/../../etc/passwd", "/etc/passwd"]:
+        with pytest.raises(ValueError):
+            storage.exists(bad_key)
 
 
-def test_cross_tenant_video_streaming_forbidden(client_a, client_b, db_session, seed_tenants, tmp_path):
-    """Tenant B cannot stream a video file belonging to Tenant A's job."""
-    # Register job in Tenant A
-    org_a_id = seed_tenants["org_a"].id
-    job = Job(
-        job_id="J-SECRET-VID",
-        organization_id=org_a_id,
-        job_type="cleaning",
-        video_filename="private_recording.mp4",
-        status="PASS",
+def test_cross_tenant_video_streaming_forbidden(client_a, client_b, db_session, seed_tenants):
+    """Tenant B cannot stream a video belonging to Tenant A's job."""
+    client_a.post(
+        "/jobs/",
+        json={"job_id": "J-SECRET-VID", "job_type": "cleaning", "video_filename": "private_recording.mp4"},
     )
-    db_session.add(job)
-    db_session.commit()
+    res = client_a.post(
+        "/upload/",
+        data={"job_id": "J-SECRET-VID"},
+        files={"file": ("private_recording.mp4", io.BytesIO(b"secret"), "video/mp4")},
+    )
+    assert res.status_code == 200
 
-    # Bob in Tenant B attempts to stream Alice's video
-    res = client_b.get("/videos/private_recording.mp4")
+    # Bob in Tenant B attempts to stream Alice's job video
+    res = client_b.get("/jobs/J-SECRET-VID/video")
     assert res.status_code == 404

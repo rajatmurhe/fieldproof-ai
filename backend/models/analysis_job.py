@@ -57,6 +57,13 @@ class AnalysisJob(Base):
         nullable=True,
     )
 
+    # Earliest time a retry may be claimed (exponential backoff).
+    # NULL means the job can be claimed immediately.
+    next_attempt_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
     job = relationship(
         "Job",
     )

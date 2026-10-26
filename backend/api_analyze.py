@@ -9,7 +9,6 @@ it returns immediately without creating a duplicate queue entry.
 """
 
 import logging
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -21,6 +20,7 @@ from backend.models.analysis_job import AnalysisJob
 from backend.models.audit_log import AuditLog
 from backend.models.job import Job
 from backend.models.user import User
+from backend.services.storage import get_storage
 
 logger = logging.getLogger("fieldproof.api.analyze")
 
@@ -28,8 +28,6 @@ router = APIRouter(
     prefix="/analyze",
     tags=["Analysis"],
 )
-
-UPLOAD_DIR = Path("uploads")
 
 
 class AnalyzeRequest(BaseModel):
@@ -83,9 +81,7 @@ def queue_analysis(
         }
 
     # Verify the video file is present before queuing
-    video_path = UPLOAD_DIR / Path(job.video_filename).name
-
-    if not video_path.exists():
+    if not job.storage_key or not get_storage().exists(job.storage_key):
         raise HTTPException(
             status_code=400,
             detail=(
@@ -109,6 +105,7 @@ def queue_analysis(
         queue_job.started_at = None
         queue_job.completed_at = None
         queue_job.error_message = None
+        queue_job.next_attempt_at = None
 
     previous_status = job.status
     job.status = "QUEUED"

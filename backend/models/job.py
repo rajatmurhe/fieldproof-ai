@@ -39,9 +39,17 @@ class Job(Base):
         nullable=False,
     )
 
+    # Original filename, for display only. Never used to locate the file.
     video_filename = Column(
         String(255),
         nullable=False,
+    )
+
+    # Server-generated, organization-scoped key (see services/storage.py).
+    # NULL until a video has been uploaded.
+    storage_key = Column(
+        String(512),
+        nullable=True,
     )
 
     status = Column(
