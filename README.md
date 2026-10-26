@@ -1,5 +1,7 @@
 # 🛡️ FieldProof AI
 
+[![CI](https://github.com/rajatmurhe/fieldproof-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/rajatmurhe/fieldproof-ai/actions/workflows/ci.yml)
+
 > **AI-powered video QA for field-service operations — automatically verify job-completion evidence and escalate uncertainty to humans.**
 
 FieldProof AI is a multi-tenant SaaS platform for **field-service and home-service operations** such as cleaning, HVAC, plumbing, and facilities maintenance.
