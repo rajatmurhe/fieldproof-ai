@@ -6,15 +6,17 @@ Picks QUEUED analysis jobs, calls Gemini, persists results.
 Resilience features:
   - WITH FOR UPDATE SKIP LOCKED: safe concurrent worker claiming
   - Stale PROCESSING recovery: jobs stuck >30min are reset to QUEUED
+  - Retries with exponential backoff for transient failures (rate limits,
+    5xx, malformed model output); permanent failures (missing video or
+    checklist, video rejected by Gemini) fail immediately
   - Max retry limit: after MAX_ATTEMPTS failures, job is permanently FAILED
   - Structured logging: every lifecycle event is logged with job context
 """
 
 import logging
-import time
+import threading
 from datetime import datetime, timedelta
-from pathlib import Path
-
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.database.connection import SessionLocal
@@ -24,14 +26,14 @@ from backend.models.checklist import Checklist
 from backend.models.job import Job
 from backend.models.job_finding import JobFinding
 from backend.models.job_result import JobResult
-from backend.models.organization import Organization
-from backend.models.user import User
-
-from backend.services.gemini_service import analyze_video
+# Imported so SQLAlchemy can resolve string relationships when the worker
+# runs as its own process.
+from backend.models.organization import Organization  # noqa: F401
+from backend.models.user import User  # noqa: F401
+from backend.services.gemini_service import VideoRejectedError, analyze_video
+from backend.services.storage import get_storage
 
 logger = logging.getLogger("fieldproof.worker")
-
-UPLOAD_DIR = Path("uploads")
 
 # Maximum times a job will be attempted before being permanently failed.
 MAX_ATTEMPTS = 3
@@ -42,6 +44,24 @@ STALE_THRESHOLD_MINUTES = 30
 
 # How long the worker sleeps between polls when there is nothing to do.
 POLL_INTERVAL_SECONDS = 5
+
+# Backoff before retry n (1-based) is RETRY_BASE_SECONDS * 2^(n-1).
+RETRY_BASE_SECONDS = 60
+
+
+class PermanentAnalysisError(Exception):
+    """A failure that retrying cannot fix (bad input or configuration)."""
+
+
+PERMANENT_ERRORS = (
+    PermanentAnalysisError,
+    FileNotFoundError,
+    VideoRejectedError,
+)
+
+
+def retry_delay(attempts: int) -> timedelta:
+    return timedelta(seconds=RETRY_BASE_SECONDS * 2 ** max(attempts - 1, 0))
 
 
 def add_audit_log(
@@ -136,6 +156,7 @@ def recover_stale_jobs() -> int:
                 # Reset to QUEUED for retry
                 queue_job.status = "QUEUED"
                 queue_job.started_at = None
+                queue_job.next_attempt_at = None
                 queue_job.error_message = (
                     f"Reset after stale PROCESSING "
                     f"(attempt {queue_job.attempts} of {MAX_ATTEMPTS})."
@@ -181,6 +202,10 @@ def claim_one_job() -> int | None:
             db.query(AnalysisJob)
             .filter(
                 AnalysisJob.status == "QUEUED",
+                or_(
+                    AnalysisJob.next_attempt_at.is_(None),
+                    AnalysisJob.next_attempt_at <= datetime.utcnow(),
+                ),
             )
             .order_by(AnalysisJob.created_at.asc())
             .with_for_update(skip_locked=True)
@@ -213,6 +238,7 @@ def claim_one_job() -> int | None:
             queue_job.error_message = (
                 f"Permanently failed: exceeded {MAX_ATTEMPTS} attempts."
             )
+            previous_status = job.status
             job.status = "FAILED"
 
             add_audit_log(
@@ -220,7 +246,7 @@ def claim_one_job() -> int | None:
                 organization_id=job.organization_id,
                 job_id=job.id,
                 action="AI_ANALYSIS_FAILED",
-                from_status=job.status,
+                from_status=previous_status,
                 to_status="FAILED",
                 details={
                     "reason": queue_job.error_message,
@@ -240,6 +266,7 @@ def claim_one_job() -> int | None:
         queue_job.status = "PROCESSING"
         queue_job.attempts += 1
         queue_job.started_at = datetime.utcnow()
+        queue_job.next_attempt_at = None
         queue_job.error_message = None
 
         job.status = "ANALYZING"
@@ -315,33 +342,32 @@ def process_job(queue_job_id: int) -> None:
             .first()
         )
 
-        if not checklist:
-            raise RuntimeError(
+        if not checklist or not checklist.checks:
+            raise PermanentAnalysisError(
                 f"No checklist configured for job type '{job.job_type}' "
                 f"in organization {job.organization_id}."
             )
 
-        video_path = UPLOAD_DIR / Path(job.video_filename).name
-
-        if not video_path.exists():
-            raise FileNotFoundError(
-                f"Video file not found on disk: {video_path}"
+        if not job.storage_key:
+            raise PermanentAnalysisError(
+                "No video has been uploaded for this job."
             )
 
         logger.info(
             "Starting Gemini analysis: job=%s type=%s video=%s",
             job.job_id,
             job.job_type,
-            video_path.name,
+            job.storage_key,
         )
 
         started = datetime.utcnow()
 
-        result, active_model = analyze_video(
-            str(video_path),
-            job.job_type,
-            checklist.checks,
-        )
+        with get_storage().local_path(job.storage_key) as video_path:
+            result, active_model = analyze_video(
+                str(video_path),
+                job.job_type,
+                checklist.checks,
+            )
 
         duration_seconds = int(
             (datetime.utcnow() - started).total_seconds()
@@ -441,27 +467,55 @@ def process_job(queue_job_id: int) -> None:
                 )
 
                 error_message = str(exc)
+                retryable = (
+                    not isinstance(exc, PERMANENT_ERRORS)
+                    and queue_job.attempts < MAX_ATTEMPTS
+                )
+
+                if retryable:
+                    delay = retry_delay(queue_job.attempts)
+                    queue_job.status = "QUEUED"
+                    queue_job.started_at = None
+                    queue_job.next_attempt_at = datetime.utcnow() + delay
+                    queue_job.error_message = error_message
+                    new_status = "QUEUED"
+                    action = "AI_ANALYSIS_RETRY_SCHEDULED"
+                else:
+                    queue_job.status = "FAILED"
+                    queue_job.completed_at = datetime.utcnow()
+                    queue_job.error_message = error_message
+                    new_status = "FAILED"
+                    action = "AI_ANALYSIS_FAILED"
 
                 if job:
                     previous_status = job.status
-                    job.status = "FAILED"
+                    job.status = new_status
+
+                    details = {
+                        "reason": error_message,
+                        "worker_attempt": queue_job.attempts,
+                    }
+                    if retryable:
+                        details["retry_in_seconds"] = int(delay.total_seconds())
 
                     add_audit_log(
                         db,
                         organization_id=job.organization_id,
                         job_id=job.id,
-                        action="AI_ANALYSIS_FAILED",
+                        action=action,
                         from_status=previous_status,
-                        to_status="FAILED",
-                        details={
-                            "reason": error_message,
-                            "worker_attempt": queue_job.attempts,
-                        },
+                        to_status=new_status,
+                        details=details,
                     )
 
-                queue_job.status = "FAILED"
-                queue_job.completed_at = datetime.utcnow()
-                queue_job.error_message = error_message
+                if retryable:
+                    logger.warning(
+                        "Retry scheduled for queue_job_id=%d in %ds (attempt %d/%d)",
+                        queue_job_id,
+                        int(delay.total_seconds()),
+                        queue_job.attempts,
+                        MAX_ATTEMPTS,
+                    )
 
                 db.commit()
 
@@ -479,6 +533,7 @@ def process_job(queue_job_id: int) -> None:
 def run_worker(
     poll_interval: int = POLL_INTERVAL_SECONDS,
     stale_check_interval: int = 300,
+    stop_event: threading.Event | None = None,
 ) -> None:
     """
     Main worker loop.
@@ -496,7 +551,9 @@ def run_worker(
 
     last_stale_check = datetime.utcnow()
 
-    while True:
+    stop_event = stop_event or threading.Event()
+
+    while not stop_event.is_set():
         # Periodically recover stale PROCESSING jobs
         now = datetime.utcnow()
         if (now - last_stale_check).total_seconds() >= stale_check_interval:
@@ -506,10 +563,12 @@ def run_worker(
         queue_job_id = claim_one_job()
 
         if queue_job_id is None:
-            time.sleep(poll_interval)
+            stop_event.wait(poll_interval)
             continue
 
         process_job(queue_job_id)
+
+    logger.info("FieldProof analysis worker stopped.")
 
 
 if __name__ == "__main__":
