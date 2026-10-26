@@ -593,6 +593,7 @@ The test suite currently includes dedicated coverage for multi-tenancy, jobs, ch
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env   # then fill in your keys
 
 alembic upgrade head
 
@@ -638,6 +639,12 @@ CLERK_SECRET_KEY=your_key
 CLERK_AUTHORIZED_PARTIES=http://localhost:3000
 DATABASE_URL=postgresql+psycopg2://...
 CORS_ALLOWED_ORIGINS=http://localhost:3000
+GEMINI_MODEL=gemini-2.5-flash              # optional override
+GEMINI_FALLBACK_MODEL=gemini-2.5-flash-lite # optional override
+RUN_WORKER_IN_PROCESS=true                  # optional: worker inside the API (free hosting)
+SUPABASE_URL=...                            # optional: durable video storage
+SUPABASE_SERVICE_KEY=...
+SUPABASE_BUCKET=videos
 ```
 
 Frontend:
