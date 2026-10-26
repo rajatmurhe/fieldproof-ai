@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import AppLayout from "@/components/AppLayout";
+import { Loading, Notice, Sheet } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
 
 type ChecklistSummary = {
@@ -96,7 +97,7 @@ export default function ChecklistsPage() {
     }
   }
 
-  async function loadChecklist(jobType: string) {
+  const loadChecklist = useCallback(async (jobType: string) => {
     try {
       setError("");
       setMessage("");
@@ -116,7 +117,12 @@ export default function ChecklistsPage() {
       console.error(err);
       setError(err instanceof Error ? err.message : "Could not load checklist.");
     }
-  }
+  }, [getToken]);
+
+  // Effect Event: reads the latest selectedType without re-running the effect when it changes.
+  const loadInitialChecklists = useEffectEvent(() => {
+    loadChecklists();
+  });
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -124,13 +130,17 @@ export default function ChecklistsPage() {
       router.replace("/sign-in");
       return;
     }
-    loadChecklists();
+    // Intentional fetch-on-load: the loader sets its loading flag, then the result after await.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadInitialChecklists();
   }, [isLoaded, isSignedIn, router]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !selectedType || isCreatingNew) return;
+    // Intentional fetch-on-load: the loader sets its loading flag, then the result after await.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadChecklist(selectedType);
-  }, [isLoaded, isSignedIn, selectedType, isCreatingNew]);
+  }, [isLoaded, isSignedIn, selectedType, isCreatingNew, loadChecklist]);
 
   function updateCheck(index: number, value: string) {
     setChecks((current) => current.map((c, i) => (i === index ? value : c)));
@@ -229,177 +239,152 @@ export default function ChecklistsPage() {
 
   return (
     <AppLayout
-      title="QA Checklists"
+      title="Checklists"
       subtitle="Define domain-specific criteria evaluated by the Gemini agentic video understanding model"
-      action={
-        <button
-          onClick={() => {
-            setIsCreatingNew(true);
-            setNewJobType("");
-            setChecks([""]);
-            setMessage("");
-            setError("");
-          }}
-          className="rounded-xl bg-teal-700 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-teal-800 transition flex items-center gap-1.5"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-          </svg>
-          New Checklist
-        </button>
-      }
     >
       <div className="space-y-6">
         {message && (
-          <div className="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm font-medium text-teal-800 flex items-center justify-between">
-            <span>{message}</span>
-            <button onClick={() => setMessage("")} className="text-xs font-bold text-teal-600">
-              Dismiss
-            </button>
-          </div>
+          <Notice
+            tone="pass"
+            action={
+              <button onClick={() => setMessage("")} className="link text-xs">
+                Dismiss
+              </button>
+            }
+          >
+            {message}
+          </Notice>
         )}
 
-        {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <Notice tone="fail">{error}</Notice>}
 
         {loading ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-16 text-center text-sm text-slate-500">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent mx-auto mb-2" />
-            Loading organization checklists...
+          <div className="sheet">
+            <Loading label="Loading organization checklists" />
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-            {/* Left Column: Service Types Selector */}
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
             <div className="space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-                <div className="flex items-center justify-between mb-3 px-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Service Types ({checklists.length})
-                  </span>
-                </div>
-
-                <div className="space-y-1.5">
+              <Sheet
+                title={`Checklists (${checklists.length})`}
+                aside={
+                  <button
+                    onClick={() => {
+                      setIsCreatingNew(true);
+                      setNewJobType("");
+                      setChecks([""]);
+                      setMessage("");
+                      setError("");
+                    }}
+                    className="btn btn-quiet btn-sm"
+                  >
+                    + New checklist
+                  </button>
+                }
+                bodyClassName=""
+              >
+                <ul className="divide-y divide-rule">
                   {checklists.map((c) => {
                     const isSelected = !isCreatingNew && selectedType === c.job_type;
 
                     return (
-                      <button
-                        key={c.job_type}
-                        onClick={() => {
-                          setIsCreatingNew(false);
-                          setSelectedType(c.job_type);
-                        }}
-                        className={`w-full flex items-center justify-between rounded-xl px-3.5 py-3 text-left transition ${
-                          isSelected
-                            ? "bg-teal-50 text-teal-800 border border-teal-200 font-bold"
-                            : "text-slate-600 hover:bg-slate-50 border border-transparent"
-                        }`}
-                      >
-                        <span className="capitalize">{c.job_type.replace(/_/g, " ")}</span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
-                          {c.count}
-                        </span>
-                      </button>
+                      <li key={c.job_type}>
+                        <button
+                          onClick={() => {
+                            setIsCreatingNew(false);
+                            setSelectedType(c.job_type);
+                          }}
+                          aria-current={isSelected ? "true" : undefined}
+                          className={`flex w-full items-center justify-between border-l-[3px] py-2.5 pl-[17px] pr-5 text-left text-sm capitalize transition-colors ${
+                            isSelected
+                              ? "border-signal bg-paper font-semibold text-ink"
+                              : "border-transparent text-ink-2 hover:bg-paper hover:text-ink"
+                          }`}
+                        >
+                          <span>{c.job_type.replace(/_/g, " ")}</span>
+                          <span className="font-mono text-[11px] tabular-nums text-ink-3">
+                            {String(c.count).padStart(2, "0")}
+                          </span>
+                        </button>
+                      </li>
                     );
                   })}
-                </div>
-              </div>
+                  {isCreatingNew && (
+                    <li className="border-l-[3px] border-signal bg-paper py-2.5 pl-[17px] pr-5 text-sm font-semibold italic text-ink">
+                      {newJobType || "New checklist"}
+                    </li>
+                  )}
+                </ul>
+              </Sheet>
 
-              {/* Principle Info Card */}
-              <div className="rounded-2xl border border-slate-200 bg-linear-to-br from-slate-50 to-teal-50/30 p-4 shadow-xs">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="h-2 w-2 rounded-full bg-teal-600" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                    QA Architecture
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Keep each checklist item objective and visually observable. The AI is instructed:{" "}
-                  <strong className="text-slate-900">NOT_VISIBLE is not automatically FAIL</strong>.
-                  If the technician does not capture proof, it surfaces for human sign-off.
-                </p>
+              <div className="border-l-[3px] border-ink px-4 py-1 text-xs leading-relaxed text-ink-2">
+                <p className="kicker mb-1">Writing criteria</p>
+                Keep each checklist item objective and visually observable. The AI is instructed:{" "}
+                <strong className="text-ink">NOT_VISIBLE is not automatically FAIL</strong>. If the technician does
+                not capture proof, it surfaces for human sign-off.
               </div>
             </div>
 
-            {/* Right Column: Editor Workspace */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-slate-100 gap-4">
-                <div>
-                  {isCreatingNew ? (
-                    <div>
-                      <span className="text-xs font-bold uppercase tracking-wider text-teal-700">
-                        Create New Checklist
-                      </span>
-                      <div className="mt-2">
-                        <input
-                          type="text"
-                          value={newJobType}
-                          onChange={(e) => setNewJobType(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
-                          placeholder="e.g. electrical, roofing, plumbing"
-                          className="rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-semibold outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <h2 className="text-xl font-bold text-slate-900 capitalize">
-                        {selectedType.replace(/_/g, " ")} Checklist
-                      </h2>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {checks.length} criteria evaluated by Gemini video intelligence
-                      </p>
-                    </div>
-                  )}
-                </div>
+            <section className="sheet">
+              <header className="flex flex-col gap-4 border-b border-rule px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
+                {isCreatingNew ? (
+                  <label className="block min-w-0 sm:w-72">
+                    <span className="kicker">New checklist · service type</span>
+                    <input
+                      type="text"
+                      value={newJobType}
+                      onChange={(e) => setNewJobType(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
+                      placeholder="e.g. electrical, roofing, plumbing"
+                      className="field mt-1 font-mono"
+                    />
+                  </label>
+                ) : (
+                  <div className="min-w-0">
+                    <p className="kicker">Checklist</p>
+                    <h2 className="display mt-1 truncate text-2xl uppercase leading-none">
+                      {selectedType.replace(/_/g, " ")}
+                    </h2>
+                    <p className="mt-1.5 text-xs text-ink-2">
+                      {checks.length} criteria evaluated by Gemini video intelligence
+                    </p>
+                  </div>
+                )}
 
-                <div className="flex items-center gap-2.5">
+                <div className="flex shrink-0 items-center gap-2">
                   {!isCreatingNew && (
                     <button
                       onClick={() => deleteChecklist(selectedType)}
-                      className="rounded-xl border border-red-200 text-red-700 hover:bg-red-50 px-3.5 py-2 text-xs font-semibold transition"
+                      className="btn btn-sm border-fail text-fail hover:border-fail hover:bg-fail hover:text-white"
                     >
                       Delete
                     </button>
                   )}
 
-                  <button
-                    onClick={saveChecklist}
-                    disabled={saving}
-                    className="rounded-xl bg-teal-700 px-5 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-teal-800 transition disabled:opacity-60 flex items-center gap-1.5"
-                  >
-                    {saving ? "Saving..." : "Save Checklist"}
+                  <button onClick={saveChecklist} disabled={saving} className="btn btn-primary">
+                    {saving ? "Saving…" : "Save checklist"}
                   </button>
                 </div>
+              </header>
+
+              <div className="flex flex-wrap items-center gap-2 border-b border-rule bg-paper/60 px-5 py-3">
+                <span className="kicker mr-1">Load preset</span>
+                {Object.keys(TEMPLATE_PRESETS).map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => applyPreset(preset)}
+                    className="btn btn-quiet btn-sm capitalize"
+                  >
+                    {preset}
+                  </button>
+                ))}
               </div>
 
-              {/* Template Presets Quick Fill */}
-              <div>
-                <p className="text-xs font-semibold text-slate-500 mb-2">
-                  Load Template Criteria Presets:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {Object.keys(TEMPLATE_PRESETS).map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => applyPreset(preset)}
-                      className="rounded-lg bg-slate-100 hover:bg-slate-200/80 px-2.5 py-1 text-xs font-medium text-slate-700 capitalize transition"
-                    >
-                      + {preset}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Criteria List */}
-              <div className="space-y-3">
+              <ol className="divide-y divide-rule">
                 {checks.map((check, idx) => (
-                  <div key={idx} className="flex items-center gap-3">
-                    <span className="h-8 w-8 rounded-lg bg-teal-50 text-teal-800 text-xs font-bold flex items-center justify-center shrink-0 border border-teal-200/60">
-                      {idx + 1}
+                  <li key={idx} className="flex items-center gap-3 px-5 py-2.5">
+                    <span className="w-6 shrink-0 font-mono text-xs tabular-nums text-ink-3">
+                      {String(idx + 1).padStart(2, "0")}
                     </span>
 
                     <input
@@ -407,38 +392,29 @@ export default function ChecklistsPage() {
                       value={check}
                       onChange={(e) => updateCheck(idx, e.target.value)}
                       placeholder="e.g. Work area is clean and free of leftover debris"
-                      className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-xs font-medium outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                      className="field flex-1"
+                      aria-label={`Criterion ${idx + 1}`}
                     />
 
                     <button
                       type="button"
                       onClick={() => removeCheck(idx)}
                       disabled={checks.length <= 1}
-                      className="rounded-lg p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition disabled:opacity-30"
+                      className="btn btn-quiet btn-sm"
                       title="Remove check"
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
+                      Remove
                     </button>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ol>
 
-              {/* Add item button */}
-              <div>
-                <button
-                  type="button"
-                  onClick={addCheck}
-                  className="rounded-xl border border-dashed border-slate-300 hover:border-teal-500 hover:bg-teal-50/30 px-4 py-2.5 text-xs font-semibold text-slate-600 transition flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4 text-teal-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Requirement
+              <div className="border-t border-rule px-5 py-3">
+                <button type="button" onClick={addCheck} className="btn btn-quiet btn-sm">
+                  + Add criterion
                 </button>
               </div>
-            </div>
+            </section>
           </div>
         )}
       </div>

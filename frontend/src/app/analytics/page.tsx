@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import AppLayout from "@/components/AppLayout";
+import { EmptyState, Notice, Sheet, StatusStamp } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
 
 type Job = {
@@ -75,6 +76,8 @@ export default function AnalyticsPage() {
       router.replace("/sign-in");
       return;
     }
+    // Intentional fetch-on-load: the loader sets its loading flag, then the result after await.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [isLoaded, isSignedIn, loadData, router]);
 
@@ -113,34 +116,29 @@ export default function AnalyticsPage() {
 
   const statusBars = [
     {
-      label: "Approved by Human Reviewer",
+      label: "Approved by human reviewer",
       count: metrics.approved,
-      barColor: "bg-emerald-500",
-      textColor: "text-emerald-700",
+      barColor: "bg-pass",
     },
     {
-      label: "Passed by AI Auto-Verification",
+      label: "Passed by AI auto-verification",
       count: metrics.pass,
-      barColor: "bg-teal-500",
-      textColor: "text-teal-700",
+      barColor: "bg-pass/60",
     },
     {
-      label: "Awaiting Human Review (Inconclusive/Flagged)",
+      label: "Awaiting human review (inconclusive / flagged)",
       count: metrics.review,
-      barColor: "bg-amber-500",
-      textColor: "text-amber-700",
+      barColor: "bg-signal",
     },
     {
-      label: "In Active AI Pipeline (Analyzing / Queued)",
+      label: "In active AI pipeline (analyzing / queued)",
       count: metrics.analyzing + metrics.queued,
-      barColor: "bg-blue-500",
-      textColor: "text-blue-700",
+      barColor: "bg-queue",
     },
     {
-      label: "Rejected or Failed",
+      label: "Rejected or failed",
       count: metrics.rejected + metrics.failed,
-      barColor: "bg-red-500",
-      textColor: "text-red-700",
+      barColor: "bg-fail",
     },
   ];
 
@@ -154,211 +152,203 @@ export default function AnalyticsPage() {
 
   return (
     <AppLayout
-      title="Operational Analytics"
+      title="Analytics"
       subtitle="Quality assurance metrics, pass rates, and human escalation distribution"
       action={
-        <button
-          onClick={loadData}
-          disabled={loading}
-          className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-        >
-          {loading ? "Refreshing..." : "Refresh"}
+        <button onClick={loadData} disabled={loading} className="btn btn-quiet btn-sm">
+          {loading ? "Refreshing…" : "Refresh"}
         </button>
       }
     >
       <div className="space-y-8">
-        {error && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <Notice tone="fail">{error}</Notice>}
 
-        {/* Top Operational KPIs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Total QA Volume
-            </span>
-            <p className="mt-2 text-3xl font-extrabold text-slate-900">
-              {loading ? "—" : metrics.total}
-            </p>
-            <p className="mt-1 text-xs text-slate-400">Recorded video jobs</p>
-          </div>
-
-          <div className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-xs">
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
-              Completion Rate
-            </span>
-            <p className="mt-2 text-3xl font-extrabold text-emerald-800">
-              {loading ? "—" : `${metrics.verificationRate}%`}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              {metrics.completed} verified & approved
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-amber-200 bg-white p-5 shadow-xs">
-            <span className="text-xs font-bold uppercase tracking-wider text-amber-700">
-              Review Escalation Rate
-            </span>
-            <p className="mt-2 text-3xl font-extrabold text-amber-800">
-              {loading ? "—" : `${metrics.reviewEscalationRate}%`}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              {metrics.review} deferred to human sign-off
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-red-200 bg-white p-5 shadow-xs">
-            <span className="text-xs font-bold uppercase tracking-wider text-red-700">
-              Rejection Rate
-            </span>
-            <p className="mt-2 text-3xl font-extrabold text-red-800">
-              {loading ? "—" : `${metrics.rejectionRate}%`}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              {metrics.rejected + metrics.failed} jobs failed criteria
-            </p>
-          </div>
+        {/* Ruled metric strip */}
+        <div className="grid grid-cols-2 gap-px border border-rule bg-rule lg:grid-cols-4">
+          <MetricCell label="Total QA volume" value={loading ? "—" : metrics.total} caption="Recorded video jobs" />
+          <MetricCell
+            label="Completion rate"
+            value={loading ? "—" : `${metrics.verificationRate}%`}
+            caption={`${metrics.completed} verified & approved`}
+            rate={metrics.verificationRate}
+            barColor="bg-pass"
+            valueColor="text-pass"
+          />
+          <MetricCell
+            label="Review escalation"
+            value={loading ? "—" : `${metrics.reviewEscalationRate}%`}
+            caption={`${metrics.review} deferred to human sign-off`}
+            rate={metrics.reviewEscalationRate}
+            barColor="bg-signal"
+            valueColor="text-signal-deep"
+          />
+          <MetricCell
+            label="Rejection rate"
+            value={loading ? "—" : `${metrics.rejectionRate}%`}
+            caption={`${metrics.rejected + metrics.failed} jobs failed criteria`}
+            rate={metrics.rejectionRate}
+            barColor="bg-fail"
+            valueColor="text-fail"
+          />
         </div>
 
-        {/* 2-Column Analytics Overview */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Status Distribution */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-6">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">Quality Decision Distribution</h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Breakdown of AI automatic decisions vs human reviewer interventions
-              </p>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <Sheet title="Decision distribution" aside={<span className="kicker">AI vs. human</span>} bodyClassName="">
+            <div className="relative overflow-x-auto">
+              <table className="ledger">
+                <thead>
+                  <tr>
+                    <th>Outcome</th>
+                    <th className="text-right">Count</th>
+                    <th className="w-[34%]">Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {statusBars.map((item) => {
+                    const pct = metrics.total > 0 ? Math.round((item.count / metrics.total) * 100) : 0;
+
+                    return (
+                      <tr key={item.label}>
+                        <td className="text-ink">{item.label}</td>
+                        <td className="text-right font-mono text-[13px] font-semibold tabular-nums">{item.count}</td>
+                        <td>
+                          <ShareBar pct={pct} barColor={item.barColor} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
+            <p className="border-t border-rule px-5 py-3 text-xs leading-relaxed text-ink-2">
+              <span className="kicker mr-2">Note</span>
+              FieldProof AI is designed so that missing evidence yields <em>NOT_VISIBLE</em>, keeping the automated
+              false-negative rate low while preserving compliance integrity.
+            </p>
+          </Sheet>
 
-            <div className="space-y-4">
-              {statusBars.map((item) => {
-                const pct = metrics.total > 0 ? Math.round((item.count / metrics.total) * 100) : 0;
-
-                return (
-                  <div key={item.label} className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-700">{item.label}</span>
-                      <span className="font-bold text-slate-900">
-                        {item.count} <span className="text-slate-400 font-normal">({pct}%)</span>
-                      </span>
-                    </div>
-
-                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${item.barColor}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Architecture Explainer */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-xs text-slate-600 leading-relaxed">
-              <strong className="text-slate-900">Architectural Note:</strong> FieldProof AI is designed
-              so that missing evidence yields <em>NOT_VISIBLE</em>, keeping the automated false-negative
-              rate low while preserving compliance integrity.
-            </div>
-          </div>
-
-          {/* Service Workload Breakdown */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-6">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">Workload by Service Type</h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Operational volume categorized by verified checklist domains
-              </p>
-            </div>
-
+          <Sheet title="Workload by service type" aside={<span className="kicker">By checklist domain</span>} bodyClassName="">
             {jobTypeBreakdown.length === 0 ? (
-              <div className="p-12 text-center text-xs text-slate-400">
-                No service job data recorded yet.
+              <div className="p-5">
+                <EmptyState title="No data yet">No service job data recorded yet.</EmptyState>
               </div>
             ) : (
-              <div className="space-y-3">
-                {jobTypeBreakdown.map(([type, count]) => {
-                  const pct = metrics.total > 0 ? Math.round((count / metrics.total) * 100) : 0;
+              <div className="relative overflow-x-auto">
+                <table className="ledger">
+                  <thead>
+                    <tr>
+                      <th>Service type</th>
+                      <th className="text-right">Jobs</th>
+                      <th className="w-[34%]">Share</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jobTypeBreakdown.map(([type, count]) => {
+                      const pct = metrics.total > 0 ? Math.round((count / metrics.total) * 100) : 0;
 
-                  return (
-                    <div
-                      key={type}
-                      className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3.5 border border-slate-100"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className="h-2 w-2 rounded-full bg-teal-600" />
-                        <span className="text-xs font-bold text-slate-800 capitalize">
-                          {type.replace(/_/g, " ")}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-slate-400 font-medium">{pct}% of total</span>
-                        <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-bold text-teal-800">
-                          {count} jobs
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                      return (
+                        <tr key={type}>
+                          <td className="capitalize text-ink">{type.replace(/_/g, " ")}</td>
+                          <td className="text-right font-mono text-[13px] font-semibold tabular-nums">{count}</td>
+                          <td>
+                            <ShareBar pct={pct} barColor="bg-ink" />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
-          </div>
+          </Sheet>
         </div>
 
-        {/* Recent Activity Feed */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">Recent Verification Activity</h3>
-              <p className="text-xs text-slate-500">Live operational audit stream</p>
-            </div>
-
-            <Link href="/jobs" className="text-xs font-semibold text-teal-700 hover:text-teal-900">
+        <Sheet
+          title="Recent verification activity"
+          aside={
+            <Link href="/jobs" className="link text-xs">
               View all jobs →
             </Link>
+          }
+          bodyClassName=""
+        >
+          <div className="relative overflow-x-auto">
+            <table className="ledger">
+              <thead>
+                <tr>
+                  <th>Job ID</th>
+                  <th>Service type</th>
+                  <th>Video evidence</th>
+                  <th>Created</th>
+                  <th className="text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {jobs.slice(0, 6).map((job) => (
+                  <tr key={job.id}>
+                    <td>
+                      <Link
+                        href={`/jobs/${encodeURIComponent(job.job_id)}`}
+                        className="font-mono text-[13px] font-semibold text-ink hover:text-signal-deep"
+                      >
+                        {job.job_id}
+                      </Link>
+                    </td>
+                    <td className="capitalize text-ink-2">{job.job_type.replace(/_/g, " ")}</td>
+                    <td className="max-w-xs truncate font-mono text-[11px] text-ink-3">{job.video_filename}</td>
+                    <td className="font-mono text-xs text-ink-2">
+                      {job.created_at ? new Date(job.created_at).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="text-right">
+                      <StatusStamp status={job.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-
-          <div className="divide-y divide-slate-100">
-            {jobs.slice(0, 6).map((job) => (
-              <div key={job.id} className="py-3 flex items-center justify-between text-xs">
-                <div>
-                  <Link
-                    href={`/jobs/${encodeURIComponent(job.job_id)}`}
-                    className="font-bold text-slate-900 hover:text-teal-700"
-                  >
-                    {job.job_id}
-                  </Link>
-                  <span className="text-slate-400 mx-2">·</span>
-                  <span className="capitalize text-slate-600">{job.job_type.replace(/_/g, " ")}</span>
-                  <span className="text-slate-400 mx-2">·</span>
-                  <span className="font-mono text-slate-400 text-[11px]">{job.video_filename}</span>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <span className="text-slate-400 text-[11px]">
-                    {job.created_at ? new Date(job.created_at).toLocaleDateString() : "—"}
-                  </span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                      job.status === "APPROVED" || job.status === "PASS"
-                        ? "bg-emerald-50 text-emerald-700"
-                        : job.status === "REVIEW"
-                        ? "bg-amber-50 text-amber-700"
-                        : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {job.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        </Sheet>
       </div>
     </AppLayout>
+  );
+}
+
+function MetricCell({
+  label,
+  value,
+  caption,
+  rate,
+  barColor,
+  valueColor = "text-ink",
+}: {
+  label: string;
+  value: string | number;
+  caption: string;
+  rate?: number;
+  barColor?: string;
+  valueColor?: string;
+}) {
+  return (
+    <div className="flex flex-col bg-sheet px-5 py-5">
+      <p className="kicker">{label}</p>
+      <p className={`figure mt-3 text-4xl sm:text-5xl ${valueColor}`}>{value}</p>
+      {rate !== undefined && barColor && (
+        <div className="mt-3">
+          <ShareBar pct={rate} barColor={barColor} hideLabel />
+        </div>
+      )}
+      <p className="mt-2 text-xs text-ink-2">{caption}</p>
+    </div>
+  );
+}
+
+function ShareBar({ pct, barColor, hideLabel }: { pct: number; barColor: string; hideLabel?: boolean }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="h-1.5 flex-1 bg-rule">
+        <div className={`h-full ${barColor} transition-[width] duration-500`} style={{ width: `${pct}%` }} />
+      </div>
+      {!hideLabel && <span className="w-9 text-right font-mono text-[11px] tabular-nums text-ink-3">{pct}%</span>}
+    </div>
   );
 }

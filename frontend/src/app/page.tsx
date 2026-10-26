@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import AppLayout from "@/components/AppLayout";
+import { EmptyState, Loading, Notice, Sheet, StatusStamp } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
 
 type Job = {
@@ -77,6 +78,8 @@ export default function Home() {
       router.replace("/sign-in");
       return;
     }
+    // Intentional fetch-on-load: the loader sets its loading flag, then the result after await.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [isLoaded, isSignedIn, loadData, router]);
 
@@ -89,283 +92,196 @@ export default function Home() {
     (stats?.approved ?? 0) + (stats?.pass ?? 0);
   const rejectedJobs = (stats?.rejected ?? 0) + (stats?.failed ?? 0);
 
+  const pendingJobs = stats?.pending ?? 0;
+
+  // Share of all jobs per outcome, for the distribution bar.
+  const distribution = [
+    { label: "Verified", value: completedJobs, className: "bg-pass" },
+    { label: "Needs review", value: reviewJobs, className: "bg-signal" },
+    { label: "In pipeline", value: activePipeline, className: "bg-queue" },
+    { label: "Rejected / failed", value: rejectedJobs, className: "bg-fail" },
+    { label: "Pending", value: pendingJobs, className: "bg-ink-3" },
+  ];
+
   return (
     <AppLayout
-      title="Operations Dashboard"
-      subtitle="Real-time field technician video QA and AI verification pipeline"
+      title="Operations"
+      subtitle="Completion videos coming in from the field, and where each one stands."
       action={
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={loadData}
-            disabled={loading}
-            className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-          >
-            {loading ? "Refreshing..." : "Refresh"}
-          </button>
-          <button
-            onClick={() => router.push("/jobs/new")}
-            className="rounded-xl bg-teal-700 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-teal-800 transition flex items-center gap-1.5"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-            </svg>
-            New Job
-          </button>
-        </div>
+        <button onClick={loadData} disabled={loading} className="btn btn-quiet btn-sm">
+          {loading ? "Refreshing…" : "Refresh"}
+        </button>
       }
     >
       <div className="space-y-8">
-        {error && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <Notice tone="fail" title={error} />}
 
-        {/* Operational Metrics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Needs Review (Primary Operational Attention) */}
-          <Link
+        {/* Desk counters: one ruled strip instead of separate cards (the 1px gaps are the rules) */}
+        <section className="grid grid-cols-2 gap-px border border-rule bg-rule lg:grid-cols-4">
+          <Counter
             href="/reviews"
-            className="group rounded-2xl border border-amber-200 bg-white p-5 shadow-xs transition hover:shadow-md hover:border-amber-400 relative overflow-hidden"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-700">
-                Needs Human Review
-              </span>
-              <span className="h-8 w-8 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 group-hover:scale-105 transition">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </span>
-            </div>
-            <p className="mt-3 text-3xl font-extrabold text-slate-900">
-              {loading ? "—" : reviewJobs}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Uncertainty flagged · Requires sign-off
-            </p>
-          </Link>
-
-          {/* Card 2: In Pipeline (Analyzing & Queued) */}
-          <Link
+            label="Needs review"
+            value={loading ? null : reviewJobs}
+            caption="Flagged by the model, waiting on a person"
+            valueClassName={reviewJobs > 0 ? "text-signal-deep" : ""}
+          />
+          <Counter
             href="/jobs"
-            className="group rounded-2xl border border-teal-200 bg-white p-5 shadow-xs transition hover:shadow-md hover:border-teal-400"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-teal-700">
-                Active AI Pipeline
-              </span>
-              <span className="h-8 w-8 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700 group-hover:scale-105 transition">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </span>
-            </div>
-            <p className="mt-3 text-3xl font-extrabold text-slate-900">
-              {loading ? "—" : activePipeline}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              {stats?.analyzing ?? 0} analyzing · {stats?.queued ?? 0} queued
-            </p>
-          </Link>
+            label="In pipeline"
+            value={loading ? null : activePipeline}
+            caption={`${stats?.analyzing ?? 0} analyzing · ${stats?.queued ?? 0} queued`}
+          />
+          <Counter
+            label="Verified"
+            value={loading ? null : completedJobs}
+            caption="Passed, or approved by a reviewer"
+          />
+          <Counter
+            label="Total jobs"
+            value={loading ? null : totalJobs}
+            caption={`${rejectedJobs} rejected or failed`}
+          />
+        </section>
 
-          {/* Card 3: Completed / Approved */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
-                Verified & Completed
-              </span>
-              <span className="h-8 w-8 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </span>
+        {!loading && totalJobs > 0 && (
+          <div>
+            <div className="flex h-2.5 w-full gap-px bg-paper" role="img" aria-label="Jobs by outcome">
+              {distribution
+                .filter((d) => d.value > 0)
+                .map((d) => (
+                  <div
+                    key={d.label}
+                    className={d.className}
+                    style={{ width: `${(d.value / totalJobs) * 100}%` }}
+                    title={`${d.label}: ${d.value}`}
+                  />
+                ))}
             </div>
-            <p className="mt-3 text-3xl font-extrabold text-slate-900">
-              {loading ? "—" : completedJobs}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Passed inspection or human approved
-            </p>
-          </div>
-
-          {/* Card 4: Total Quality Volume */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Total Jobs Tracked
-              </span>
-              <span className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-              </span>
-            </div>
-            <p className="mt-3 text-3xl font-extrabold text-slate-900">
-              {loading ? "—" : totalJobs}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              {rejectedJobs} rejected / failed
-            </p>
-          </div>
-        </div>
-
-        {/* Review Queue Callout if pending items */}
-        {reviewJobs > 0 && (
-          <div className="rounded-2xl border border-amber-200 bg-linear-to-r from-amber-50 to-orange-50 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
-            <div>
-              <span className="rounded-md bg-amber-200/80 px-2 py-0.5 text-xs font-bold text-amber-900">
-                Action Required
-              </span>
-              <h3 className="mt-2 text-base font-bold text-slate-900">
-                {reviewJobs} {reviewJobs === 1 ? "job requires" : "jobs require"} human review decision
-              </h3>
-              <p className="mt-1 text-xs text-slate-600">
-                AI QA detected inconclusive visual evidence or failure flags. Review the evidence timestamps to approve or reject.
-              </p>
-            </div>
-            <Link
-              href="/reviews"
-              className="rounded-xl bg-amber-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-amber-700 transition shrink-0 self-start sm:self-center"
-            >
-              Open Review Queue →
-            </Link>
+            <ul className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1">
+              {distribution.map((d) => (
+                <li key={d.label} className="flex items-center gap-1.5 font-mono text-[11px] text-ink-2">
+                  <span className={`h-2 w-2 ${d.className}`} />
+                  {d.label}
+                  <span className="text-ink">{d.value}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
-        {/* Recent Jobs Table */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-xs overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">Recent Service Jobs</h3>
-              <p className="text-xs text-slate-500">Live feed from multi-tenant PostgreSQL database</p>
-            </div>
+        {reviewJobs > 0 && (
+          <Notice
+            tone="review"
+            title={`${reviewJobs} ${reviewJobs === 1 ? "job is" : "jobs are"} waiting for a decision`}
+            action={
+              <Link href="/reviews" className="btn btn-signal btn-sm">
+                Open review queue →
+              </Link>
+            }
+          >
+            The model marked at least one criterion as failed or not visible. Check the footage at the
+            linked timestamps, then approve or reject.
+          </Notice>
+        )}
 
-            <Link
-              href="/jobs"
-              className="text-xs font-semibold text-teal-700 hover:text-teal-900"
-            >
-              View all jobs →
+        <Sheet
+          title="Recent jobs"
+          aside={
+            <Link href="/jobs" className="link text-xs">
+              Full register →
             </Link>
-          </div>
-
+          }
+          bodyClassName=""
+        >
           {loading ? (
-            <div className="p-12 text-center text-sm text-slate-500">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent mx-auto mb-2" />
-              Loading recent jobs...
-            </div>
+            <Loading label="Loading recent jobs…" />
           ) : jobs.length === 0 ? (
-            <div className="p-12 text-center">
-              <p className="text-sm font-semibold text-slate-700">No QA jobs yet</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Upload your first completion video to test the AI QA pipeline.
-              </p>
-              <button
-                onClick={() => router.push("/jobs/new")}
-                className="mt-4 rounded-xl bg-teal-700 px-4 py-2 text-xs font-semibold text-white"
+            <div className="p-5">
+              <EmptyState
+                title="No jobs yet"
+                action={
+                  <button onClick={() => router.push("/jobs/new")} className="btn btn-primary btn-sm">
+                    Create the first job
+                  </button>
+                }
               >
-                + Create First Job
-              </button>
+                Upload a technician&apos;s completion video to run it through QA.
+              </EmptyState>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100">
+            <div className="relative overflow-x-auto">
+              <table className="ledger">
+                <thead>
                   <tr>
-                    <th className="px-6 py-3.5">Job ID</th>
-                    <th className="px-6 py-3.5">Service Type</th>
-                    <th className="px-6 py-3.5">Status</th>
-                    <th className="px-6 py-3.5">Video Evidence</th>
-                    <th className="px-6 py-3.5">Created</th>
-                    <th className="px-6 py-3.5 text-right">Action</th>
+                    <th className="w-12">No.</th>
+                    <th>Job ID</th>
+                    <th>Service</th>
+                    <th>Status</th>
+                    <th>Video</th>
+                    <th>Created</th>
+                    <th aria-label="Open" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-xs font-medium">
-                  {jobs.slice(0, 8).map((job) => (
-                    <tr
-                      key={job.id}
-                      onClick={() => router.push(`/jobs/${encodeURIComponent(job.job_id)}`)}
-                      className="cursor-pointer hover:bg-slate-50/70 transition"
-                    >
-                      <td className="px-6 py-4 font-bold text-slate-900">
-                        {job.job_id}
-                      </td>
-                      <td className="px-6 py-4 capitalize text-slate-600">
-                        {job.job_type}
-                      </td>
-                      <td className="px-6 py-4">
-                        <StatusBadge status={job.status} />
-                      </td>
-                      <td className="px-6 py-4 max-w-xs truncate text-slate-500 font-mono text-[11px]">
-                        {job.video_filename}
-                      </td>
-                      <td className="px-6 py-4 text-slate-400">
-                        {job.created_at ? new Date(job.created_at).toLocaleDateString() : "—"}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <span className="text-teal-700 hover:text-teal-900 font-bold">
-                          Inspect →
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                <tbody>
+                  {jobs.slice(0, 8).map((job, i) => {
+                    const href = `/jobs/${encodeURIComponent(job.job_id)}`;
+                    return (
+                      <tr key={job.id} data-href={href} onClick={() => router.push(href)}>
+                        <td className="font-mono text-xs text-ink-3">{String(i + 1).padStart(2, "0")}</td>
+                        <td className="font-mono font-semibold">{job.job_id}</td>
+                        <td className="capitalize text-ink-2">{job.job_type}</td>
+                        <td>
+                          <StatusStamp status={job.status} />
+                        </td>
+                        <td className="max-w-[16rem] truncate font-mono text-xs text-ink-3">
+                          {job.video_filename}
+                        </td>
+                        <td className="whitespace-nowrap font-mono text-xs text-ink-2">
+                          {job.created_at ? new Date(job.created_at).toLocaleDateString() : "—"}
+                        </td>
+                        <td className="row-go text-right text-xs font-semibold text-ink-3">Open →</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
-        </div>
-
-        {/* Platform Feature Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-            <div className="h-2 w-8 rounded-full bg-teal-600 mb-3" />
-            <h4 className="text-sm font-bold text-slate-900">Agentic Video Intelligence</h4>
-            <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-              Gemini examines temporal video evidence without hallucinating. Criteria with insufficient visual proof are marked NOT_VISIBLE rather than falsely failed.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-            <div className="h-2 w-8 rounded-full bg-amber-500 mb-3" />
-            <h4 className="text-sm font-bold text-slate-900">Human-in-the-Loop Review</h4>
-            <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-              Reviewers jump directly to evidence timestamps in the video to verify contested findings before making a binding operational decision.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-            <div className="h-2 w-8 rounded-full bg-slate-800 mb-3" />
-            <h4 className="text-sm font-bold text-slate-900">Audit & Tenant Isolation</h4>
-            <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-              Server-side multi-tenancy backed by Clerk organizations and PostgreSQL guarantees jobs, videos, and findings remain strictly compartmentalized.
-            </p>
-          </div>
-        </div>
+        </Sheet>
       </div>
     </AppLayout>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    PASS: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    APPROVED: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    REVIEW: "bg-amber-100 text-amber-800 border-amber-200",
-    NOT_VISIBLE: "bg-amber-100 text-amber-800 border-amber-200",
-    FAIL: "bg-red-100 text-red-800 border-red-200",
-    REJECTED: "bg-red-100 text-red-800 border-red-200",
-    FAILED: "bg-red-100 text-red-800 border-red-200",
-    ANALYZING: "bg-teal-100 text-teal-800 border-teal-200",
-    PROCESSING: "bg-teal-100 text-teal-800 border-teal-200",
-    QUEUED: "bg-blue-100 text-blue-800 border-blue-200",
-    PENDING: "bg-slate-100 text-slate-700 border-slate-200",
-  };
+function Counter({
+  label,
+  value,
+  caption,
+  href,
+  valueClassName = "",
+}: {
+  label: string;
+  value: number | null;
+  caption: string;
+  href?: string;
+  valueClassName?: string;
+}) {
+  const body = (
+    <>
+      <div className="flex items-baseline justify-between">
+        <span className="kicker">{label}</span>
+        {href && <span className="text-xs text-ink-3 transition-colors group-hover:text-signal-deep">→</span>}
+      </div>
+      <p className={`figure mt-4 text-5xl ${valueClassName}`}>{value ?? "—"}</p>
+      <p className="mt-2 text-xs text-ink-2">{caption}</p>
+    </>
+  );
 
-  const selected = styles[status] || "bg-slate-100 text-slate-700 border-slate-200";
-
-  return (
-    <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold border ${selected}`}>
-      {status}
-    </span>
+  return href ? (
+    <Link href={href} className="group block bg-sheet p-5 transition-colors hover:bg-paper">
+      {body}
+    </Link>
+  ) : (
+    <div className="bg-sheet p-5">{body}</div>
   );
 }
