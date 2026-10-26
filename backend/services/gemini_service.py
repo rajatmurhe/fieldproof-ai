@@ -19,6 +19,7 @@ Key design principles:
 """
 
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Literal
@@ -32,8 +33,14 @@ load_dotenv()
 logger = logging.getLogger("fieldproof.gemini")
 
 # Prefer the most capable model; fall back to lite if daily quota is exhausted.
-PRIMARY_MODEL = "gemini-2.0-flash"
-FALLBACK_MODEL = "gemini-2.0-flash-lite"
+# Both are on the Gemini API free tier. Override via env when Google retires
+# or renames models, without a code change.
+PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
+
+
+class VideoRejectedError(Exception):
+    """Gemini could not process the video file; retrying will not help."""
 
 
 class CheckResult(BaseModel):
@@ -88,6 +95,7 @@ def analyze_video(
     Raises:
         FileNotFoundError: If the video file does not exist.
         ValueError: If the checklist is empty.
+        VideoRejectedError: If Gemini cannot process the video file.
         RuntimeError: If Gemini analysis fails on all attempts.
     """
     video_file_path = Path(video_path)
@@ -126,7 +134,7 @@ def analyze_video(
         video_file = client.files.get(name=video_file.name)
 
         if video_file.state and video_file.state.name == "FAILED":
-            raise RuntimeError(
+            raise VideoRejectedError(
                 f"Gemini rejected the video file '{video_file_path.name}'. "
                 "Check that the file is a supported format and not corrupted."
             )
