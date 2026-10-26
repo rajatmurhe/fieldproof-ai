@@ -13,7 +13,19 @@ services:
       - key: CLERK_SECRET_KEY
         sync: false
       - key: CORS_ALLOWED_ORIGINS
-        value: "*" 
+        sync: false # Your frontend origin, e.g. https://fieldproof-frontend.onrender.com
+      - key: CLERK_AUTHORIZED_PARTIES
+        sync: false # Same frontend origin
+      # Free tier has no separate worker service: run it inside the API.
+      - key: RUN_WORKER_IN_PROCESS
+        value: "true"
+      # Free tier disk is ephemeral: store videos in Supabase Storage (free).
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: videos
 
   # The Next.js Frontend (100% Free Forever)
   - type: web

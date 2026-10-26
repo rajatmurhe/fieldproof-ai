@@ -1,3 +1,9 @@
+import os
+
+# Point every import-time engine at SQLite so the test suite can never touch a
+# real database, whatever DATABASE_URL is set to in the shell or .env.
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -31,6 +37,16 @@ TestingSessionLocal = sessionmaker(
     autoflush=False,
     bind=test_engine,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolated_storage(tmp_path, monkeypatch):
+    """Store uploaded videos in a per-test temp dir, never in ./uploads."""
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
+    upload_dir = tmp_path / "uploads"
+    monkeypatch.setattr("backend.services.storage.UPLOAD_DIR", upload_dir)
+    return upload_dir
 
 
 @pytest.fixture(scope="function")

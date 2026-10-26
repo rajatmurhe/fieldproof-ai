@@ -15,7 +15,6 @@ export async function apiFetch(
 
   return fetch(requestUrl, {
     ...options,
-    credentials: "include",
     mode: "cors",
     headers,
     cache: "no-store",

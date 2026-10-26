@@ -1,10 +1,11 @@
 import logging
 import os
+import threading
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.database.connection import Base, engine
 from backend.models.analysis_job import AnalysisJob  # noqa: F401
 from backend.models.audit_log import AuditLog  # noqa: F401
 from backend.models.checklist import Checklist  # noqa: F401
@@ -27,7 +28,8 @@ logging.basicConfig(
 
 logger = logging.getLogger("fieldproof")
 
-Base.metadata.create_all(bind=engine)
+# The schema is owned by Alembic (`alembic upgrade head`), not created at
+# import time — importing the app must never touch a database.
 
 _allowed_origins = [
     origin.strip()
@@ -38,16 +40,63 @@ _allowed_origins = [
     if origin.strip()
 ]
 
+if "*" in _allowed_origins:
+    logger.warning(
+        "CORS_ALLOWED_ORIGINS contains '*'. Set it to your frontend origin "
+        "in production."
+    )
+
+
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """
+    Optionally run the analysis worker inside the API process.
+
+    Free PaaS tiers (e.g. Render free) don't include separate background
+    worker services, and they spin idle services down. Running the worker in
+    the API's lifespan ties both to the same process, so the worker is
+    supervised, restarted and stopped together with the API. With
+    docker-compose, leave this off and run `python -m backend.worker`.
+    """
+    stop_event = threading.Event()
+    worker_thread = None
+
+    if _env_flag("RUN_WORKER_IN_PROCESS"):
+        from backend.worker import run_worker
+
+        worker_thread = threading.Thread(
+            target=run_worker,
+            kwargs={"stop_event": stop_event},
+            name="fieldproof-worker",
+            daemon=True,
+        )
+        worker_thread.start()
+        logger.info("In-process analysis worker started.")
+
+    yield
+
+    if worker_thread:
+        stop_event.set()
+        worker_thread.join(timeout=10)
+
+
 app = FastAPI(
     title="FieldProof AI",
     description="AI-powered field-service video QA platform",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
+# Auth uses a Bearer token, not cookies, so credentials are not needed.
+# This also keeps a wildcard origin from ever being combined with credentials.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
