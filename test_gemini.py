@@ -31,15 +31,22 @@ def main():
         sys.exit(1)
 
     print(f"Running Gemini video QA on '{video_path}' for job type '{job_type}'...")
-    result, model_used = analyze_video(video_path, job_type, DEFAULT_CHECKS)
+    analysis = analyze_video(video_path, job_type, DEFAULT_CHECKS)
+    result = analysis.result
 
-    print(f"\n===== QA RESULT (Model: {model_used}) =====")
+    print(f"\n===== QA RESULT (Model: {analysis.model_name}, prompt {analysis.prompt_version}) =====")
     print(f"Overall Status: {result.overall_status}")
     print("\nDetailed Findings:")
     for idx, c in enumerate(result.checks, 1):
         ts = f" @ {c.evidence_timestamp}" if c.evidence_timestamp else ""
         print(f"  {idx}. [{c.status}] ({int(c.confidence*100)}%{ts}) {c.check}")
         print(f"     Reason: {c.reason}")
+
+    if analysis.guardrail_events:
+        print("\nGuardrails fired:")
+        for event in analysis.guardrail_events:
+            where = f" (check {event.check_order})" if event.check_order else ""
+            print(f"  - {event.type}{where}: {event.detail}")
 
 
 if __name__ == "__main__":
