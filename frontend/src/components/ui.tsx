@@ -115,3 +115,20 @@ export function Field({ label, children }: { label: string; children: ReactNode 
     </div>
   );
 }
+
+// Names for guardrail rules recorded by the backend (backend/services/guardrails.py).
+export const GUARDRAIL_LABELS: Record<string, { label: string; meaning: string }> = {
+  missing_check: { label: "Missing finding", meaning: "Model skipped a criterion; it was sent to review." },
+  duplicate_check: { label: "Duplicate finding", meaning: "A second finding for the same criterion was dropped." },
+  unknown_check: { label: "Unknown criterion", meaning: "A finding for a criterion not on the checklist was dropped." },
+  invalid_timestamp: { label: "Unreadable timestamp", meaning: "Evidence timestamp wasn't MM:SS or HH:MM:SS; removed." },
+  timestamp_out_of_range: { label: "Timestamp past the end", meaning: "Evidence timestamp was later than the video; removed." },
+  low_confidence: { label: "Low confidence", meaning: "PASS or FAIL below the confidence threshold; sent to review." },
+  overall_status_overridden: { label: "Overall status corrected", meaning: "Model's overall verdict didn't match its findings." },
+  schema_repaired: { label: "Reply repaired", meaning: "First reply broke the schema; a repair request fixed it." },
+  schema_fallback: { label: "Unreadable reply", meaning: "No valid reply after a repair; every criterion sent to review." },
+};
+
+export function guardrailLabel(type: string): string {
+  return GUARDRAIL_LABELS[type]?.label ?? type.replace(/_/g, " ");
+}

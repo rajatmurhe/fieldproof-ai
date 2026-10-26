@@ -12,6 +12,7 @@ import {
   Notice,
   Sheet,
   StatusStamp,
+  guardrailLabel,
   statusTone,
   type Tone,
 } from "@/components/ui";
@@ -26,10 +27,19 @@ type CheckResult = {
   check_order?: number;
 };
 
+type GuardrailEvent = {
+  type: string;
+  detail: string;
+  check_order: number | null;
+};
+
 type JobResult = {
   overall_status: "PASS" | "REVIEW";
   model_name?: string;
   analyzed_at?: string;
+  prompt_version?: string | null;
+  checklist_snapshot?: string[] | null;
+  guardrail_events?: GuardrailEvent[];
   checks: CheckResult[];
 };
 
@@ -319,6 +329,9 @@ export default function JobDetailsPage() {
   if (!job) return null;
 
   const result = job.result;
+  const guardrailEvents = result?.guardrail_events ?? [];
+  const resultEvents = guardrailEvents.filter((event) => event.check_order == null);
+  const findingEvents = (order: number) => guardrailEvents.filter((event) => event.check_order === order);
   const isQueued = job.status === "QUEUED";
   const isAnalyzing = job.status === "ANALYZING";
   const isFailed = job.status === "FAILED";
@@ -471,13 +484,35 @@ export default function JobDetailsPage() {
                 </span>
 
                 {result?.model_name && (
-                  <dl className="text-right">
+                  <dl className="space-y-2 text-right">
                     <Field label="Model">
                       <span className="font-mono text-xs">{result.model_name}</span>
                     </Field>
+                    {result.prompt_version && (
+                      <Field label="Prompt">
+                        <span className="font-mono text-xs">{result.prompt_version}</span>
+                      </Field>
+                    )}
+                    {result.checklist_snapshot && (
+                      <Field label="Checklist">
+                        <span className="font-mono text-xs">{result.checklist_snapshot.length} criteria, frozen</span>
+                      </Field>
+                    )}
                   </dl>
                 )}
               </div>
+
+              {/* Guardrails that applied to the whole result rather than one finding */}
+              {resultEvents.length > 0 && (
+                <ul className="mt-4 space-y-1 border-t border-rule pt-3">
+                  {resultEvents.map((event, i) => (
+                    <li key={i} className="text-xs text-ink-2">
+                      <span className="kicker text-signal-deep">Guardrail</span>{" "}
+                      <span className="font-semibold text-ink">{guardrailLabel(event.type)}</span> — {event.detail}
+                    </li>
+                  ))}
+                </ul>
+              )}
 
               {isReview && (
                 <div className="mt-6 space-y-3">
@@ -552,6 +587,7 @@ export default function JobDetailsPage() {
                       key={`${check.check}-${idx}`}
                       check={check}
                       index={idx + 1}
+                      notes={findingEvents(idx + 1)}
                       onTimestampClick={seekToTimestamp}
                     />
                   ))}
@@ -592,10 +628,12 @@ const FINDING_RULES: Record<CheckResult["status"], string> = {
 function FindingRow({
   check,
   index,
+  notes,
   onTimestampClick,
 }: {
   check: CheckResult;
   index: number;
+  notes: GuardrailEvent[];
   onTimestampClick: (ts: string | null) => void;
 }) {
   const confidence = Math.round(check.confidence * 100);
@@ -637,6 +675,13 @@ function FindingRow({
       </div>
 
       <p className="mt-2.5 pl-8 text-sm leading-relaxed text-ink-2">{check.reason}</p>
+
+      {notes.map((event, i) => (
+        <p key={i} className="mt-1.5 pl-8 text-xs text-ink-2">
+          <span className="kicker text-signal-deep">Guardrail</span>{" "}
+          <span className="font-semibold text-ink">{guardrailLabel(event.type)}</span> — {event.detail}
+        </p>
+      ))}
     </li>
   );
 }

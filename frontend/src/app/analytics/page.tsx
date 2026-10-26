@@ -5,7 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import AppLayout from "@/components/AppLayout";
-import { EmptyState, Notice, Sheet, StatusStamp } from "@/components/ui";
+import { EmptyState, GUARDRAIL_LABELS, Notice, Sheet, StatusStamp, guardrailLabel } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
 
 type Job = {
@@ -27,6 +27,9 @@ type Stats = {
   approved: number;
   rejected: number;
   failed: number;
+  guardrails?: Record<string, number>;
+  guarded_results?: number;
+  analyzed_results?: number;
 };
 
 export default function AnalyticsPage() {
@@ -263,6 +266,8 @@ export default function AnalyticsPage() {
           </Sheet>
         </div>
 
+        <GuardrailsSheet stats={stats} />
+
         <Sheet
           title="Recent verification activity"
           aside={
@@ -339,6 +344,55 @@ function MetricCell({
       )}
       <p className="mt-2 text-xs text-ink-2">{caption}</p>
     </div>
+  );
+}
+
+function GuardrailsSheet({ stats }: { stats: Stats | null }) {
+  const fired = Object.entries(stats?.guardrails ?? {}).sort((a, b) => b[1] - a[1]);
+  const analyzed = stats?.analyzed_results ?? 0;
+  const guarded = stats?.guarded_results ?? 0;
+
+  return (
+    <Sheet
+      title="AI guardrails"
+      aside={
+        analyzed > 0 && (
+          <span className="kicker">
+            {guarded} of {analyzed} results adjusted
+          </span>
+        )
+      }
+      bodyClassName=""
+    >
+      {fired.length === 0 ? (
+        <p className="px-5 py-4 text-sm text-ink-2">
+          {analyzed === 0
+            ? "Guardrail counts appear once jobs are analyzed with the current pipeline."
+            : "No guardrail has fired yet: every model reply matched the checklist and passed every check."}
+        </p>
+      ) : (
+        <div className="relative overflow-x-auto">
+          <table className="ledger">
+            <thead>
+              <tr>
+                <th>Rule</th>
+                <th>What it does</th>
+                <th className="text-right">Fired</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fired.map(([type, count]) => (
+                <tr key={type}>
+                  <td className="font-semibold text-ink">{guardrailLabel(type)}</td>
+                  <td className="text-ink-2">{GUARDRAIL_LABELS[type]?.meaning ?? "—"}</td>
+                  <td className="text-right font-mono text-[13px] font-semibold tabular-nums">{count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Sheet>
   );
 }
 
