@@ -99,12 +99,10 @@ The dashboard gives operations teams a high-level view of the QA pipeline.
 
 It surfaces:
 
-* jobs requiring human review
-* active AI analysis jobs
-* verified/completed jobs
-* total jobs tracked
-* recent service submissions
-* review queue entry points
+* a counter strip for jobs needing review, jobs in the AI pipeline, verified jobs and total jobs
+* an outcome bar showing how every job has ended up (verified, review, pipeline, rejected/failed)
+* a call-out when jobs are waiting on a human decision, linking straight to the review queue
+* the most recent submissions as a ledger
 
 The dashboard is designed around **operational attention**, not just raw database statistics.
 
@@ -148,7 +146,22 @@ This creates a clean data contract between the **operational job** and the **AI 
 
 ---
 
-## 4. Dynamic QA Checklists
+## 4. Job Detail & Verdict
+
+Each job has its own page with the completion video next to the AI's verdict.
+
+* the overall decision is shown as a stamp (`PASS`, `REVIEW`, `APPROVED`, `REJECTED`)
+* every checklist item has its own finding with status, confidence, the evidence timestamp and the model's reason
+* clicking a timestamp jumps the video to that moment
+* findings changed by a guardrail are marked, with the reason
+* the model, prompt version and the checklist snapshot used for the analysis are listed with the result
+* reviewers approve or reject from the same page
+
+![Job Detail](photos/seven.png)
+
+---
+
+## 5. Dynamic QA Checklists
 
 Operations teams can define their own verification criteria instead of hard-coding one universal prompt.
 
@@ -225,6 +238,7 @@ Each checklist requirement produces a structured finding containing:
 
 ```json
 {
+  "check_id": 1,
   "check": "Floor area is visibly clean",
   "status": "FAIL",
   "confidence": 0.95,
@@ -235,7 +249,7 @@ Each checklist requirement produces a structured finding containing:
 
 The important part is that the model output is transformed into **machine-readable QA data**, rather than being displayed as an unstructured paragraph.
 
-The backend validates the model response through Pydantic before persisting the result.
+The backend validates the model response through Pydantic before persisting the result. Every criterion is numbered in the prompt, and the model has to answer with the matching `check_id`, so findings map 1:1 onto the checklist.
 
 This enables the frontend to build reliable UI elements such as:
 
@@ -244,6 +258,25 @@ This enables the frontend to build reliable UI elements such as:
 * confidence indicators
 * explanations
 * review actions
+
+---
+
+# 🛡️ Guardrails on AI Output
+
+The model's reply is treated as a draft. Anything that can be decided in code is decided in code (`backend/services/guardrails.py`), so a bad generation can never change what was asked or quietly upgrade a verdict.
+
+| Guardrail | What happens |
+| --- | --- |
+| 1:1 checklist mapping | Missing criteria become `NOT_VISIBLE`, duplicate and unknown `check_id`s are dropped, stored text is always the checklist's own wording |
+| Timestamp validation | Evidence timestamps must parse (`MM:SS` / `HH:MM:SS`) and fall inside the video's duration, otherwise they're discarded |
+| Confidence threshold | `PASS` / `FAIL` below `GUARDRAIL_MIN_CONFIDENCE` (default `0.5`) becomes `NOT_VISIBLE` and goes to a person |
+| Computed overall status | `PASS` only if every criterion passed. The model's own overall status is ignored, and disagreements are logged |
+| Schema repair | If the reply doesn't match the schema, the model gets one repair attempt. If that fails too, every criterion falls back to `NOT_VISIBLE` |
+| Prompt injection | The prompt tells the model that anything written or spoken in the video is evidence, never an instruction |
+
+Every rule that fires is stored with the result as a guardrail event, shown on the job page and counted on the analytics page.
+
+Each result also saves a **snapshot of the checklist** and the **prompt version** (`qa-v2`) it was produced with, so editing a checklist later never changes what an old result means.
 
 ---
 
@@ -305,6 +338,7 @@ The current interface exposes metrics such as:
 * rejection rate
 * quality decision distribution
 * workload by service type
+* guardrail activity: how often each guardrail fired across analysed results
 
 ![Operational Analytics](photos/four.png)
 
@@ -478,7 +512,7 @@ The current schema contains the following major tables:
 | `users`         | Application users and organization membership  |
 | `jobs`          | Service QA jobs                                |
 | `analysis_jobs` | Persistent background analysis queue           |
-| `job_results`   | Overall AI result and model metadata           |
+| `job_results`   | Overall AI result, model, prompt version, checklist snapshot and guardrail events |
 | `job_findings`  | Checklist-level AI findings                    |
 | `checklists`    | Organization-specific service criteria         |
 | `audit_logs`    | Lifecycle and review history                   |
@@ -494,7 +528,8 @@ This data model separates the **operational job**, **AI processing state**, **AI
 * Next.js 16
 * React 19
 * TypeScript
-* Tailwind CSS
+* Tailwind CSS v4
+* IBM Plex Sans / Condensed / Mono
 * Clerk Authentication
 * REST API
 * Server-backed polling / status refresh
@@ -515,6 +550,7 @@ This data model separates the **operational job**, **AI processing state**, **AI
 * Google GenAI SDK
 * Structured JSON output
 * Pydantic schema validation
+* Deterministic guardrails on model output
 
 The repository currently documents this frontend/backend/AI stack and its PostgreSQL-backed architecture. 
 
@@ -567,6 +603,7 @@ The repository includes automated tests around:
 * retry behavior
 * upload validation
 * cross-tenant video access
+* AI guardrails (checklist mapping, timestamps, confidence, schema repair and fallback with a fake Gemini client)
 
 Run:
 
@@ -575,7 +612,7 @@ source .venv/bin/activate
 pytest backend/tests -v
 ```
 
-The test suite currently includes dedicated coverage for multi-tenancy, jobs, checklists, worker resilience, and upload validation. 
+GitHub Actions runs the backend tests and the frontend typecheck, lint and production build on every push (`.github/workflows/ci.yml`).
 
 ---
 
@@ -644,6 +681,7 @@ CORS_ALLOWED_ORIGINS=http://localhost:3000
 GEMINI_MODEL=gemini-2.5-flash              # optional override
 GEMINI_FALLBACK_MODEL=gemini-2.5-flash-lite # optional override
 RUN_WORKER_IN_PROCESS=true                  # optional: worker inside the API (free hosting)
+GUARDRAIL_MIN_CONFIDENCE=0.5                # optional: below this, PASS/FAIL goes to review
 SUPABASE_URL=...                            # optional: durable video storage
 SUPABASE_SERVICE_KEY=...
 SUPABASE_BUCKET=videos
@@ -689,6 +727,10 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 ### Create QA Job
 
 ![Create Job](photos/five.png)
+
+### Job Detail
+
+![Job Detail](photos/seven.png)
 
 ### New Checklist
 
@@ -787,6 +829,8 @@ FieldProof AI combines several engineering domains in one system:
 ```text
 fieldproof-ai/
 │
+├── .github/workflows/ci.yml
+│
 ├── backend/
 │   ├── api_*.py
 │   ├── auth.py
@@ -809,7 +853,8 @@ fieldproof-ai/
 │   ├── three.png
 │   ├── four.png
 │   ├── five.png
-│   └── six.png
+│   ├── six.png
+│   └── seven.png
 │
 ├── uploads/
 ├── alembic/
